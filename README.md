@@ -1,12 +1,12 @@
 # Signature Aspen · Design File Delivery
 
-An account-free client upload application with an optional Microsoft Entra ID employee workspace, built with Next.js, PostgreSQL, S3-compatible storage and Resend. Supports multiple PSD, AI, PDF, ZIP and TIFF assets, including individual files larger than 5 GB. The default transfer limit is 20 GiB, with up to 100 files.
+An account-free client upload application with an optional Microsoft Entra ID employee workspace, built with Next.js, PostgreSQL, Azure Blob Storage and Resend. Supports multiple PSD, AI, PDF, ZIP and TIFF assets, including individual files larger than 5 GB. The default transfer limit is 20 GiB, with up to 100 files.
 
 The interface uses the supplied [Signature Aspen logo](https://signatureaspen.com/wp-content/uploads/2023/09/logo2.png) with a text fallback and neutral styling. The logo is requested by the browser without a referrer; hosting a licensed copy locally is recommended for production reliability. The upstream image was unavailable to the build environment, so the palette is not represented as a verified official brand palette.
 
 ## Run locally
 
-Requires Node.js 22+ (Node 24 recommended), PostgreSQL, a private S3-compatible bucket, and a verified Resend sending domain.
+Requires Node.js 22+ (Node 24 recommended), PostgreSQL, an Azure Storage account with a private blob container, and a verified Resend sending domain.
 
 ```sh
 npm ci
@@ -18,16 +18,16 @@ npm run dev
 
 Open http://localhost:3000. Set `APP_URL` to the exact public origin in production (HTTPS required). Generate independent `COOKIE_SECRET` and `CRON_SECRET` values using `openssl rand -hex 32`. Never expose storage, database, email, or cron credentials through `NEXT_PUBLIC_` variables. Production commands: `npm run build` then `npm start`. Run focused tests with `npm test`.
 
-`DATABASE_URL` must use your provider's required TLS configuration and a direct or **session-pooled** connection, not a transaction-pooling endpoint: transfer lifecycle operations use PostgreSQL session advisory locks. The application maintains its own connection pool. `AWS_*` credentials can be omitted when the server uses an IAM role. For R2, configure `S3_ENDPOINT`, the appropriate region (`auto`), and bucket credentials. Keep S3 public access blocked; no public bucket policy is required.
+`DATABASE_URL` must use your provider's required TLS configuration and a direct or **session-pooled** connection, not a transaction-pooling endpoint: transfer lifecycle operations use PostgreSQL session advisory locks. The application maintains its own connection pool. Storage credentials and network configuration are described below; employee Microsoft SSO is independent of application-to-storage authentication.
 
 Optional limits are `MAX_TRANSFER_BYTES`, `MAX_TRANSFER_FILES`, `MAX_TRANSFER_RECIPIENTS`, and `DATABASE_POOL_MAX` (see `.env.example`). The form supports up to 100 files and describes the default 20 GiB allowance; adjust its copy if you change the byte limit.
 
 ## How it works
 
 1. The sender selects files and enters sender/recipient emails, company, project title, an optional note and passcode, and 7/14/30-day retention.
-2. The server validates the manifest, stores metadata in PostgreSQL, and creates multipart uploads. The browser receives a separate upload capability; a download link cannot modify uploads.
-3. The browser sends up to three chunks concurrently directly to storage using short-lived signed URLs, shows aggregate progress/speed, and retries failed chunks. Cancellation settles all in-flight chunks; a resumed upload discovers completed parts from storage. No uploaded file passes through the application server.
-4. The server lists and verifies uploaded parts and object sizes, completes the transfer, then emails the sender, recipients, and configured internal team. The receipt displays the private link with a Copy Link action.
+2. The server validates the manifest and stores metadata and an Azure upload session in PostgreSQL. The browser receives a separate upload capability; a download link cannot modify uploads.
+3. The browser sends up to three blocks concurrently directly to Azure using short-lived, blob-scoped SAS URLs, shows aggregate progress/speed, and retries failed blocks. Cancellation settles all in-flight blocks; resume discovers stored blocks. No uploaded file passes through the application server.
+4. The server verifies block order and sizes, snapshots the committed staging data, and uses Azure server-side range copies to finalize server-controlled download blobs, then emails the sender, recipients, and configured internal team. Browser-writable staging data is separate from delivered files. The receipt displays the private link with a Copy Link action.
 5. Recipients view metadata and download individual signed objects or a streaming ZIP. Protected transfers require a passcode, shared separately by the sender. Expired links stop working immediately, independent of the cleanup schedule.
 
 ### Resume and delivery behavior
@@ -36,27 +36,59 @@ Pause and resume in the same browser, including after a refresh. Reselect the **
 
 Storage and email are external services. An email failure must not discard a successful transfer; use the receipt link when notifications are delayed. A transfer URL is a bearer secret: share it only with intended recipients. No account or inbox verification is provided.
 
-## Storage setup
+## Azure Blob Storage setup
 
-Allow the application role to perform `s3:PutObject`, `s3:GetObject`, `s3:DeleteObject`, `s3:AbortMultipartUpload` and `s3:ListMultipartUploadParts` for the bucket's objects. Also grant `s3:ListBucket` on the **bucket ARN** (not the object ARN): completion recovery checks for an existing object with `HeadObject`, and S3 requires this permission to return 404 rather than 403 for a missing object. S3 multipart create/complete/signing operations use these permissions. Enable encryption at rest and TLS-only access at the bucket/provider level.
+Create a **StorageV2** account with a private block-blob container (for example `design-transfers`). Set `AZURE_STORAGE_ACCOUNT_NAME` and `AZURE_STORAGE_CONTAINER`. The application uses the standard HTTPS endpoint `https://<account>.blob.core.windows.net`; it does not use an S3 compatibility layer, arbitrary endpoints, or an emulator connection string.
 
-Configure bucket CORS with your **exact** frontend origin (not a wildcard):
+Disable anonymous blob access and require secure transfer. Container creation is a deployment step, not something anonymous upload requests perform. Choose a region close to your upload audience. Keep enough capacity for cloud data plus temporary staging copies during finalization.
 
-```json
-[
-  {
-    "AllowedOrigins": ["https://uploads.example.com"],
-    "AllowedMethods": ["PUT"],
-    "AllowedHeaders": ["*"],
-    "ExposeHeaders": ["ETag"],
-    "MaxAgeSeconds": 3600
-  }
-]
-```
+### Azure-hosted application: managed identity
 
-For the S3 console, use the array above; the AWS API/CLI expects it inside a `CORSRules` property. Add `http://localhost:3000` only for development. Exposing `ETag` is required for browser upload verification.
+Leave `AZURE_STORAGE_ACCOUNT_KEY` empty. The SDK uses `DefaultAzureCredential`; on Azure, enable a system-assigned managed identity on your App Service or compute resource. For a user-assigned identity, attach it to the host and set `AZURE_CLIENT_ID` to its client ID.
 
-Configure a bucket lifecycle rule to abort incomplete multipart uploads after a suitable interval (for example 7 days), as a backstop for failed requests. If bucket versioning is enabled, also configure noncurrent-version expiration: ordinary object deletion does not remove previous versions.
+Grant that identity **Storage Blob Data Contributor** at the **storage account scope**. This supplies data access and the account-level permission to obtain a user delegation key used to sign short-lived SAS URLs. An alternative least-scope arrangement is container-scoped data permissions plus **Storage Blob Delegator** at account scope. Allow time for role assignments to propagate. Plain Azure management-plane Contributor is not sufficient.
+
+Managed identity mode does not need storage account keys or a client secret. Keep `AZURE_TENANT_ID`/`AZURE_CLIENT_SECRET` unset unless intentionally configuring service-principal credentials. The application signs user-delegation SAS URLs server-side; it never gives Azure account credentials or delegation keys to browsers.
+
+### Local application and NAS worker: Azure credentials
+
+Use the same account/container as the Azure application and one of:
+
+- **Service principal:** configure `AZURE_TENANT_ID`, `AZURE_CLIENT_ID`, and `AZURE_CLIENT_SECRET`, and assign the same storage roles described above. Protect and rotate the secret. These variables are separate from the `ENTRA_*` employee-login settings.
+- **Developer login:** use `az login` on an authorized development machine and leave account key/service-principal variables empty; the logged-in identity needs the same storage data/delegation permissions. Do not depend on an interactive developer login for production services.
+- **Account-key fallback:** set `AZURE_STORAGE_ACCOUNT_KEY` on the server only. It takes precedence over the default credential chain and signs service SAS URLs. This grants broader authority than managed identity; prefer an identity in production. If shared-key access is disabled on the account, use managed identity/service principal instead.
+
+Do not commit `.env.local`, embed credentials in browser code, or put any Azure secret in a `NEXT_PUBLIC_` variable.
+
+### Browser CORS and network access
+
+In the storage account's **Blob service CORS** settings, add your exact public frontend origin. Do not use `*` for origins. Allow `PUT`, allow the `content-type` and `x-ms-*` request headers (or all headers if required by your chosen proxy), expose `ETag` and `x-ms-request-id` for diagnostics, and set a suitable preflight cache duration (for example 3600 seconds). Browser success does not depend on an ETag header; block contents and sizes are checked by the server. Add `http://localhost:3000` as a separate development origin only.
+
+Browser uploads/downloads go directly to the Blob endpoint. That endpoint must be reachable from remote clients: a private-endpoint-only account will not work for anonymous internet uploads unless those clients have a route to it or you deploy an upload gateway. Keep containers private even when the storage network endpoint is public; SAS controls access.
+
+The application uses bounded upload-write SAS URLs and read-only download SAS URLs, scoped to one blob and limited by transfer expiry. SAS is a bearer permission: do not log query strings. Azure SAS cannot constrain a client to one block number or prevent it from committing the staging blob; the server validates expected blocks and isolates finalized objects from the staging namespace before exposing downloads.
+
+Large-file finalization performs copies inside Azure rather than downloading and re-uploading through the web server. It may take more than one request: if the UI reports that finalization is still in progress, choose **Resume upload** with the original files still selected. Already uploaded browser blocks and already copied destination blocks are reused where safe; notifications and the shareable link appear only after verification finishes.
+
+### Retention and migration
+
+Keep the authenticated cleanup schedule running. Azure does not use S3 multipart abort: uncommitted blocks age out under Azure's service rules, while committed staging and finalized blobs require application cleanup. Configure a staging-only lifecycle backstop longer than the maximum active upload retention (for example 31 days for the current 30-day maximum), not a blanket one-day rule that would delete a resumable active upload. Verify soft-delete/versioning policies against your retention requirements; deleting a current blob may retain billable versions or recoverable copies.
+
+An issued upload SAS cannot be individually revoked. It may remain usable for at most its short lifetime, never beyond transfer expiry, and can recreate staging data after cancellation. Cleanup must continue sweeping the staging prefix even after transfer file records have been removed. Finalized download blobs are never writable with upload SAS URLs.
+
+This is a **storage replacement, not a data-copy migration**. S3 objects and in-progress S3 uploads are not automatically moved or resumed. For an initial deployment, use a fresh database/container. For an existing deployment, stop new uploads, drain/cancel unfinished transfers with the old application, export any retained assets, and plan a verified object/metadata migration or let old links expire before switching. Keep the old service/storage available for remaining old links until that transition is complete.
+
+Reapply `db/schema.sql` (or run `npm run db:setup`) before starting this version against an existing database. It additively creates `transfer_files.azure_snapshot`, which records the immutable source used for crash-safe finalization retries. This schema update does not convert legacy S3 sessions or copy their objects.
+
+## Deploy the application on Azure or a local server
+
+1. Provision PostgreSQL and the private Blob container. Configure the storage identity, Blob CORS, and network access above.
+2. Use a Node.js host supporting long-lived streaming responses (for example Azure App Service or a suitable container host). Deploy the repository with Node 24, install with `npm ci`, and run `npm run build`. Start using `npm start`; the host may supply `PORT`. The same build/start commands work on a local Linux server behind an HTTPS reverse proxy.
+3. Set every environment value from `.env.example` in the host's secure application settings. Set production `APP_URL` to its exact HTTPS origin, use PostgreSQL TLS, and generate independent cookie/cron/NAS secrets. Configure Entra's callback URI for that exact origin if employee login is enabled.
+4. Apply migrations once against the deployment database with `npm run db:setup` from a controlled deployment machine that has `.env.local`. If using host-provided environment variables instead, execute `db/schema.sql`, `db/employee.sql`, and `db/nas.sql` in that order with your PostgreSQL migration tooling. Do not place a secret-bearing env file in the deployed public directory.
+5. Schedule the authenticated cleanup request below, configure sender email, enforce request rate limits, and run the production smoke tests. Run the NAS worker/service on the local host—not inside a cloud host that cannot mount your office share.
+
+If both Azure and local web applications are active, use a single canonical `APP_URL` behind routing/reverse proxies, or deploy separate instances with separately configured origins and Entra redirect URIs. Origins must match exactly for mutation checks. A shared PostgreSQL database and container allow both hosts to see the same transfers; session/cookie secrets and NAS signing configuration must be consistent where sessions are shared. Do not assume browser cookies will be shared between different domains.
 
 ## Optional employee workspace (Microsoft Entra ID)
 
@@ -85,7 +117,7 @@ The sign-in flow uses authorization code + PKCE, nonce/state validation, and sig
 ### Topology
 
 ```text
-Remote clients ──HTTPS multipart──> private cloud bucket
+Remote clients ──HTTPS blocks────> private Azure Blob container
                                           │
                                   background mirror
                                           ↓
@@ -95,13 +127,13 @@ Remote employees ──HTTPS─────────> cloud download
 
 SSO does not increase network speed. Cloud uploads still depend on each client's internet uplink. Parallel chunks can improve throughput but cannot exceed the network/storage bottleneck. Once mirrored, office employees can read the local copy over the LAN; remote employees continue using cloud downloads.
 
-This implementation targets an **always-on Linux host with `/proc` available**, with a dedicated NAS directory mounted using SMB or NFS. It does not write to a Windows user's mapped drive, and it does not expose SMB publicly. The cloud bucket remains canonical. **Direct browser-to-NAS uploads and reverse NAS-to-cloud synchronization are a later phase**, not implemented here.
+This implementation targets an **always-on Linux host with `/proc` available**, with a dedicated NAS directory mounted using SMB or NFS. It does not write to a Windows user's mapped drive, and it does not expose SMB publicly. Azure Blob remains canonical. **Direct browser-to-NAS uploads and reverse NAS-to-cloud synchronization are a later phase**, not implemented here.
 
 ### Configure and run
 
 1. Mount the share on the Linux host and create a dedicated `NAS_ROOT` owned only by the service account. Use an absolute, canonical path without symlinks; do not point at the whole NAS or another application's directory. The services check `/proc/self/mountinfo` and require an active `cifs`, `smb3`, `nfs`, or `nfs4` mount rather than silently writing into an unmounted local directory. Ensure the mount exists before starting services (for example a service-manager mount dependency). Root device/inode changes fail closed; verify the share and restart both services after remounting. Use mount permissions appropriate for sensitive assets.
 2. On the web application, set `NAS_ENABLED=true`, `NAS_LOCAL_URL` to the internal HTTPS service origin, and an independent random `NAS_SIGNING_SECRET` of at least 32 characters. Do not reuse cookie/cron secrets.
-3. On the local host, install this application and configure the same PostgreSQL database, S3 source, NAS signing secret, Entra configuration and base application environment. Set `NAS_ROOT`, `NAS_LOCAL_URL`, and `NAS_ENABLED=true`. The mirror uses the existing storage configuration; provide the full documented base environment even though it does not send email.
+3. On the local host, install this application and configure the same PostgreSQL database, Azure Blob source, NAS signing secret, Entra configuration and base application environment. Set `NAS_ROOT`, `NAS_LOCAL_URL`, and `NAS_ENABLED=true`. The mirror uses Azure SDK streamed reads; provide the full documented base environment even though it does not send email.
 4. Run `npm run db:setup` once, then supervise `npm run nas:sync` and `npm run nas:serve` as separate services. The worker polls every `NAS_SYNC_INTERVAL_MS` (default 30 seconds). For a single cycle, use `npm run nas:sync -- --once`.
 5. The local HTTP listener defaults to `127.0.0.1:8787`. Place an HTTPS reverse proxy on the office host in front of it, with a trusted certificate, internal DNS for `NAS_LOCAL_URL`, and LAN/VPN-only firewall rules. Never port-forward it or publish it as a public NAS gateway. The browser must trust and reach this internal HTTPS origin.
 6. Confirm the database uses a direct/session-pooled URL on both hosts. Lifecycle locks serialize mirroring and cleanup; a long mirror can temporarily make conflicting operations return 409.
@@ -147,7 +179,7 @@ tests/                   Node.js regression tests
 
 | Endpoint | Purpose |
 | --- | --- |
-| `POST /api/transfers` | Create manifest and multipart uploads |
+| `POST /api/transfers` | Create manifest and Azure block-upload sessions |
 | `GET /api/transfers/:id/upload` | Resume using storage's completed parts |
 | `POST /api/transfers/:id/parts` | Sign one file part |
 | `POST /api/transfers/:id/complete` | Verify and finalize, then notify |
@@ -168,6 +200,6 @@ Upload management endpoints require the separate upload capability in an `Author
 
 ## Verification
 
-The repository includes focused validation/security tests and can build without cloud credentials. Before production, run an integration smoke test against an isolated bucket/database: upload multiple files including a file over 5 GB; interrupt/resume; verify downloaded checksums; test protected/expired links; confirm all notification recipients; and run cleanup to confirm both objects and abandoned multipart uploads are removed. Browser automation and real cloud delivery require available services and credentials.
+The repository includes focused validation/security tests and can build without cloud credentials. Before production, run an integration smoke test against an isolated Azure container/database using the deployment's actual identity: upload multiple files including a single file over 10 GB; interrupt/resume; verify downloaded checksums; test protected/expired links; confirm all notification recipients; verify NAS streams; and run cleanup to confirm finalized and staging data are removed. Confirm Blob CORS from a real browser. Browser automation and real cloud delivery require available services and credentials.
 
-The optional PostgreSQL lifecycle test runs with `TEST_DATABASE_URL` set to a **dedicated disposable database**; never use a production/shared database. It exercises real database state and locking while mocking S3 and Resend. Without that variable, `npm test` runs the unit/security tests and skips that integration case.
+The optional PostgreSQL lifecycle test runs with `TEST_DATABASE_URL` set to a **dedicated disposable database**; never use a production/shared database. It exercises real database state and locking while mocking Azure Blob and Resend. Without that variable, `npm test` runs the unit/security tests and skips that integration case.

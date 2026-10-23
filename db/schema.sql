@@ -40,6 +40,7 @@ CREATE TABLE IF NOT EXISTS transfer_files (
   completed_parts jsonb NOT NULL DEFAULT '[]',
   UNIQUE (transfer_id, ordinal)
 );
+ALTER TABLE transfer_files ADD COLUMN IF NOT EXISTS azure_snapshot text;
 CREATE TABLE IF NOT EXISTS transfer_access_events (
   id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
   transfer_id text NOT NULL REFERENCES transfers(id) ON DELETE CASCADE,

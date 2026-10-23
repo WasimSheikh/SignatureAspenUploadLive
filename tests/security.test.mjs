@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {
-  BASE_PART_SIZE, MAX_S3_PARTS, HttpError, randomId, hashToken, equalSecret,
+  BASE_PART_SIZE, MAX_UPLOAD_PARTS, HttpError, randomId, hashToken, equalSecret,
   partSizeFor, expectedPartSize, safeArchiveName, validateTransfer, validateParts,
   makePasscodeHash, verifyPasscode, signUnlock, verifyUnlock, escapeHtml,
 } from "../src/lib/security.mjs";
@@ -70,7 +70,7 @@ test("part size always satisfies the 10000-part ceiling", () => {
   for (const size of [1, BASE_PART_SIZE, 20 * 1024 ** 3, BASE_PART_SIZE * 10000 + 1, 5 * 1024 ** 4]) {
     const partSize = partSizeFor(size);
     assert.ok(partSize >= BASE_PART_SIZE);
-    assert.ok(Math.ceil(size / partSize) <= MAX_S3_PARTS);
+    assert.ok(Math.ceil(size / partSize) <= MAX_UPLOAD_PARTS);
     assert.equal(partSize % (1024 * 1024), 0);
   }
   assert.equal(expectedPartSize(BASE_PART_SIZE + 1, BASE_PART_SIZE, 1), BASE_PART_SIZE);

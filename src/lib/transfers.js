@@ -4,7 +4,7 @@ import { endpoint, json, readJson, requireOrigin, requireUploadToken, requireLiv
   requirePublic, publicMetadata } from "./http.js";
 import { randomId, hashToken, validateTransfer, makePasscodeHash, verifyPasscode,
   signUnlock, fail } from "./security.mjs";
-import { initiateFile, signPart, listParts, completeFile, removeFile } from "./storage.js";
+import { initiateFile, signPart, listParts, completeFile, removeFile, requireAzure } from "./storage.js";
 import { sendTransferEmails, publicUrl } from "./email.js";
 import { recordEmployeeUpload } from "./employees.js";
 
@@ -86,14 +86,15 @@ export const uploadStatus = endpoint(async (request, context) => {
     const files = await getFiles(client, id);
     const result = [];
     for (const file of files) {
+      requireAzure(file);
       let parts = file.completed_parts;
       if (!file.completed) {
         try {
           parts = (await listParts(file)).map((part) => ({ partNumber: part.PartNumber, etag: part.ETag }));
         } catch (error) {
-          // A CompleteMultipartUpload can succeed just before a process interruption.
+          // Finalization can succeed just before a process interruption.
           // Stored validated parts let the client resume by retrying completion.
-          if (error?.name !== "NoSuchUpload" || !file.completed_parts?.length) throw error;
+          if (error?.statusCode !== 404 || !file.completed_parts?.length) throw error;
         }
       }
       result.push({ ...uploadFile(file), parts, completed: file.completed });
@@ -115,8 +116,9 @@ export const completeTransfer = endpoint(async (request, context) => {
       if (!files.length) fail(409, "Transfer has no files.");
       for (const file of files) {
         requireLive(transfer);
-        await completeFile(file, async (parts) => {
-          await client.query("UPDATE transfer_files SET completed_parts = $2::jsonb WHERE id = $1", [file.id, JSON.stringify(parts)]);
+        await completeFile(file, async (parts, snapshot) => {
+          await client.query("UPDATE transfer_files SET completed_parts = $2::jsonb, azure_snapshot = $3 WHERE id = $1",
+            [file.id, JSON.stringify(parts), snapshot]);
         });
         await client.query("UPDATE transfer_files SET completed = true WHERE id = $1", [file.id]);
       }

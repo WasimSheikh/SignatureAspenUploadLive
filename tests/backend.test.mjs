@@ -1,13 +1,14 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { Readable } from "node:stream";
+import { mockAzure } from "./azure-fixture.mjs";
 import { readFile } from "node:fs/promises";
 import { randomId, hashToken, HttpError, BASE_PART_SIZE, signUnlock } from "../src/lib/security.mjs";
 
 // These are nonfunctional test credentials; all storage calls are stubbed below.
 Object.assign(process.env, {
-  NODE_ENV: "test", DATABASE_URL: process.env.TEST_DATABASE_URL || "postgres://localhost/not-used", S3_BUCKET: "test-bucket",
-  AWS_REGION: "us-east-1", AWS_ACCESS_KEY_ID: "test-access-key", AWS_SECRET_ACCESS_KEY: "test-secret-key",
+  NODE_ENV: "test", DATABASE_URL: process.env.TEST_DATABASE_URL || "postgres://localhost/not-used",
+  AZURE_STORAGE_ACCOUNT_NAME: "testaccount", AZURE_STORAGE_CONTAINER: "test-container",
+  AZURE_STORAGE_ACCOUNT_KEY: Buffer.from("nonfunctional-test-key").toString("base64"),
   RESEND_API_KEY: "test-resend", FROM_EMAIL: "transfers@example.com", APP_URL: "https://example.com",
   CRON_SECRET: "test-cron-secret-with-at-least-32-characters",
   COOKIE_SECRET: "test-cookie-secret-with-at-least-32-characters",
@@ -23,7 +24,7 @@ const transfer = {
 };
 const file = {
   id: randomId(), transfer_id: id, object_key: "test/key", name: "design.pdf",
-  size: BASE_PART_SIZE + 3, part_size: BASE_PART_SIZE, upload_id: "private-upload-id", completed: false,
+  size: BASE_PART_SIZE + 3, part_size: BASE_PART_SIZE, upload_id: "azure-v1:12345678-1234-1234-1234-123456789abc", completed: false,
 };
 
 test("mutation origins are exact and mandatory", () => {
@@ -91,98 +92,30 @@ test("API errors are safe and all JSON responses prohibit caching", async () => 
   }
 });
 
-test("S3 parts pagination fetches every page and rejects invalid pagination", async () => {
-  const s3 = storage.storage(), original = s3.send;
-  const seen = [];
-  try {
-    s3.send = async (command) => {
-      seen.push(command.input);
-      return command.input.PartNumberMarker
-        ? { Parts: [{ PartNumber: 2, ETag: "two", Size: 3 }], IsTruncated: false }
-        : { Parts: [{ PartNumber: 1, ETag: "one", Size: BASE_PART_SIZE }], IsTruncated: true, NextPartNumberMarker: "1" };
-    };
-    const parts = await storage.listParts(file);
-    assert.equal(parts.length, 2);
-    assert.equal(seen[1].PartNumberMarker, "1");
-    s3.send = async () => ({ Parts: [], IsTruncated: true });
-    await assert.rejects(storage.listParts(file), /pagination/);
-  } finally { s3.send = original; }
-});
-
-test("completion validates exact lengths, stores parts before completing, and verifies HEAD", async () => {
-  const s3 = storage.storage(), original = s3.send;
-  const commands = [];
-  let exists = false, saved = false;
-  try {
-    s3.send = async (command) => {
-      const name = command.constructor.name;
-      commands.push(name);
-      if (name === "HeadObjectCommand") {
-        if (!exists) throw Object.assign(new Error("not found"), { name: "NotFound" });
-        return { ContentLength: file.size, Metadata: { "file-id": file.id, "transfer-id": id } };
-      }
-      if (name === "ListPartsCommand") return { Parts: [
-        { PartNumber: 1, ETag: '"one"', Size: BASE_PART_SIZE }, { PartNumber: 2, ETag: '"two"', Size: 3 },
-      ] };
-      if (name === "CompleteMultipartUploadCommand") {
-        assert.equal(saved, true);
-        assert.equal(command.input.MultipartUpload.Parts.length, 2);
-        exists = true;
-        return {};
-      }
-      throw new Error("Unexpected command");
-    };
-    await storage.completeFile(file, async (parts) => {
-      assert.deepEqual(parts, [{ partNumber: 1, etag: '"one"' }, { partNumber: 2, etag: '"two"' }]);
-      saved = true;
-    });
-    assert.deepEqual(commands, ["HeadObjectCommand", "ListPartsCommand", "CompleteMultipartUploadCommand", "HeadObjectCommand"]);
-    commands.length = 0;
-    await storage.completeFile(file, () => assert.fail("Recovered objects should not be recompleted"));
-    assert.deepEqual(commands, ["HeadObjectCommand"]);
-    s3.send = async () => ({ ContentLength: file.size - 1, Metadata: { "file-id": file.id, "transfer-id": id } });
-    await assert.rejects(storage.completeFile(file, () => {}), { status: 409 });
-  } finally { s3.send = original; }
-});
-
-test("deletion aborts uploads, tolerates already-completed uploads and deletes objects", async () => {
-  const s3 = storage.storage(), original = s3.send;
-  const commands = [];
-  try {
-    s3.send = async (command) => {
-      commands.push(command.constructor.name);
-      if (command.constructor.name === "AbortMultipartUploadCommand") throw Object.assign(new Error("gone"), { name: "NoSuchUpload" });
-      return {};
-    };
-    await storage.removeFile(file);
-    assert.deepEqual(commands, ["AbortMultipartUploadCommand", "DeleteObjectCommand"]);
-    s3.send = async () => { throw Object.assign(new Error("denied"), { name: "AccessDenied" }); };
-    await assert.rejects(storage.removeFile(file), /denied/);
-  } finally { s3.send = original; }
-});
-
 test("part and download signatures contain bounded expiry and no unsafe content disposition", async () => {
   const url = new URL(await storage.signPart(transfer, file, 2));
-  assert.equal(url.searchParams.get("partNumber"), "2");
-  assert.equal(url.searchParams.get("X-Amz-Expires"), "900");
+  assert.equal(url.searchParams.get("blockid"), storage.blockId(file, 2));
+  assert.equal(url.searchParams.get("comp"), "block");
+  assert.equal(url.searchParams.get("sp"), "w");
+  assert.ok(new Date(url.searchParams.get("se")).getTime() <= Date.now() + 900000);
   await assert.rejects(storage.signPart(transfer, file, 3), { status: 400 });
   await assert.rejects(storage.signPart(transfer, { ...file, completed: true }, 1), { status: 409 });
   const download = new URL(await storage.signDownload(transfer, { ...file, name: 'draft "final".pdf' }));
-  assert.equal(download.searchParams.get("X-Amz-Expires"), "300");
-  assert.match(download.searchParams.get("response-content-disposition"), /filename="draft _final_\.pdf"/);
-  assert.equal(download.searchParams.get("response-content-type"), "application/octet-stream");
+  assert.equal(download.searchParams.get("sp"), "r");
+  assert.ok(new Date(download.searchParams.get("se")).getTime() <= Date.now() + 300000);
+  assert.match(download.searchParams.get("rscd"), /filename="draft _final_\.pdf"/);
+  assert.equal(download.searchParams.get("rsct"), "application/octet-stream");
   await assert.rejects(storage.signDownload({ ...transfer, expires_at: new Date(0) }, file), { status: 410 });
 });
 
 test("object downloads return a streaming source", async () => {
-  const s3 = storage.storage(), original = s3.send;
+  const azure = mockAzure();
   try {
-    s3.send = async () => ({ Body: Readable.from(["hello", " world"]) });
     const body = await storage.objectStream(file);
     let value = "";
     for await (const chunk of body) value += chunk;
-    assert.equal(value, "hello world");
-  } finally { s3.send = original; }
+    assert.equal(value, "PDF");
+  } finally { azure.restore(); }
 });
 
 test("delivery emails include escaped file inventories in HTML and readable plain text", async () => {
@@ -227,9 +160,10 @@ test("PostgreSQL-backed lifecycle: resume, protected delivery, email idempotency
   const { cleanupTransfers } = await import("../src/lib/cleanup.js");
   const pool = db();
   await pool.query(await readFile(new URL("../db/schema.sql", import.meta.url), "utf8"));
-  const s3 = storage.storage(), originalSend = s3.send, originalFetch = globalThis.fetch;
-  const objects = new Map(), uploads = new Map(), deliveries = [], createdIds = [];
-  let aborts = 0, deletes = 0, failRecipient = null;
+  const azure = mockAzure(), originalFetch = globalThis.fetch;
+  const { objects, uploads } = azure;
+  const deliveries = [], createdIds = [];
+  let failRecipient = null;
   const request = (path, method = "GET", body, capability, cookie) => {
     const headers = { origin: "https://example.com" };
     if (capability) headers.authorization = ["Bearer", capability].join(" ");
@@ -246,43 +180,6 @@ test("PostgreSQL-backed lifecycle: resume, protected delivery, email idempotency
     retentionDays: 7, passcode: "test1234", files: [{ name: "artwork.pdf", size: 3, type: "application/pdf" }],
   };
   try {
-    s3.send = async (command) => {
-      const input = command.input;
-      switch (command.constructor.name) {
-        case "CreateMultipartUploadCommand": {
-          const uploadId = randomId();
-          uploads.set(input.Key, { uploadId, parts: [], metadata: input.Metadata });
-          return { UploadId: uploadId };
-        }
-        case "ListPartsCommand": {
-          const upload = uploads.get(input.Key);
-          if (!upload) throw Object.assign(new Error("missing"), { name: "NoSuchUpload" });
-          return { Parts: upload.parts };
-        }
-        case "HeadObjectCommand": {
-          const object = objects.get(input.Key);
-          if (!object) throw Object.assign(new Error("missing"), { name: "NotFound" });
-          return { ContentLength: object.size, Metadata: object.metadata };
-        }
-        case "CompleteMultipartUploadCommand": {
-          const upload = uploads.get(input.Key);
-          objects.set(input.Key, { size: upload.parts.reduce((sum, part) => sum + part.Size, 0), metadata: upload.metadata });
-          uploads.delete(input.Key);
-          return {};
-        }
-        case "AbortMultipartUploadCommand":
-          aborts++;
-          uploads.delete(input.Key);
-          return {};
-        case "DeleteObjectCommand":
-          deletes++;
-          objects.delete(input.Key);
-          return {};
-        case "GetObjectCommand":
-          return { Body: Readable.from([Buffer.from("PDF")]) };
-        default: throw new Error(`Unexpected command ${command.constructor.name}`);
-      }
-    };
     globalThis.fetch = async (url, options) => {
       assert.equal(String(url), "https://api.resend.com/emails");
       const delivery = JSON.parse(options.body);
@@ -318,7 +215,7 @@ test("PostgreSQL-backed lifecycle: resume, protected delivery, email idempotency
     const pending = await pool.query("SELECT * FROM transfer_files WHERE transfer_id=$1", [upload.id]);
     uploads.get(pending.rows[0].object_key).parts = [{ PartNumber: 1, ETag: '"uploaded"', Size: 3 }];
     const resumed = await handlers.uploadStatus(request(`${path}/upload`, "GET", undefined, upload.uploadToken), ctx);
-    assert.deepEqual((await resumed.json()).files[0].parts, [{ partNumber: 1, etag: '"uploaded"' }]);
+    assert.deepEqual((await resumed.json()).files[0].parts, [{ partNumber: 1, etag: storage.blockId(pending.rows[0], 1) }]);
     const complete = await handlers.completeTransfer(request(`${path}/complete`, "POST", {}, upload.uploadToken), ctx);
     assert.equal(complete.status, 200, await complete.clone().text());
     assert.deepEqual(await complete.json(), { url: `https://example.com/transfer/${upload.id}`, emailStatus: "sent", requiresPasscode: true });
@@ -333,7 +230,7 @@ test("PostgreSQL-backed lifecycle: resume, protected delivery, email idempotency
     const completedState = await completedResume.json();
     assert.equal(completedState.status, "complete");
     assert.equal(completedState.files[0].completed, true);
-    assert.deepEqual(completedState.files[0].parts, [{ partNumber: 1, etag: '"uploaded"' }]);
+    assert.deepEqual(completedState.files[0].parts, [{ partNumber: 1, etag: storage.blockId(pending.rows[0], 1) }]);
     assert.deepEqual(await (await handlers.readTransfer(request(path), ctx)).json(), { id: upload.id, requiresPasscode: true });
     assert.equal((await downloadTransfer(request(`${path}/download`), ctx)).status, 403);
     assert.equal((await handlers.unlockTransfer(request(`${path}/unlock`, "POST", { passcode: "bad" }), ctx)).status, 403);
@@ -384,12 +281,14 @@ test("PostgreSQL-backed lifecycle: resume, protected delivery, email idempotency
     }));
     assert.equal(cleanup.status, 200, await cleanup.clone().text());
     assert.equal((await cleanup.json()).cleaned, 1);
+    assert.equal(uploads.has(pending.rows[0].object_key), false);
+    assert.equal(objects.has(pending.rows[0].object_key), true);
     const scrubbed = (await pool.query("SELECT * FROM transfers WHERE id=$1", [expire.id])).rows[0];
     assert.equal(scrubbed.status, "expired");
     assert.equal(scrubbed.sender_email, "");
     assert.equal((await pool.query("SELECT * FROM transfer_files WHERE transfer_id=$1", [expire.id])).rowCount, 0);
     assert.ok(!objects.has(partial.object_key));
-    assert.ok(aborts >= 3 && deletes >= 3);
+    assert.ok(azure.deletes >= 3);
     await pool.query("UPDATE transfers SET expires_at=now() + interval '23 hours' WHERE id=$1", [upload.id]);
     config().reminders = true;
     const cronRequest = () => new Request("https://example.com/api/cron/cleanup", {
@@ -419,7 +318,7 @@ test("PostgreSQL-backed lifecycle: resume, protected delivery, email idempotency
     }
     assert.equal((await handlers.unlockTransfer(request(`${path}/unlock`, "POST", { passcode: "test1234" }), ctx)).status, 429);
   } finally {
-    s3.send = originalSend;
+    azure.restore();
     globalThis.fetch = originalFetch;
     for (const transferId of createdIds) await pool.query("DELETE FROM transfers WHERE id=$1", [transferId]);
     await pool.end();

@@ -42,7 +42,9 @@ test("NAS worker publishes only exact complete copies, removes expired copies an
   const root = await realpath(await mkdtemp(join(tmpdir(), "designfiles-nas-")));
   const previous = { ...process.env };
   Object.assign(process.env, {
-    DATABASE_URL: "postgres://unused/test", S3_BUCKET: "unused", AWS_REGION: "us-east-1",
+    DATABASE_URL: "postgres://unused/test",
+    AZURE_STORAGE_ACCOUNT_NAME: "teststorageaccount", AZURE_STORAGE_CONTAINER: "test-transfers",
+    AZURE_STORAGE_ACCOUNT_KEY: Buffer.from("nonfunctional-storage-test-key").toString("base64"),
     RESEND_API_KEY: "unused", FROM_EMAIL: "sender@example.test", APP_URL: "https://app.example.test",
     CRON_SECRET: "test-cron-independent-value-1234567890", COOKIE_SECRET: "test-cookie-independent-value-1234567890",
   });
@@ -52,9 +54,10 @@ test("NAS worker publishes only exact complete copies, removes expired copies an
   const pool = db();
   const originalConnect = pool.connect;
   const store = storage();
-  const originalSend = store.send;
+  const originalContainer = store.getContainerClient;
   const transfer = { id, status: "complete", expires_at: new Date(Date.now() + 120000) };
-  const file = { id: fileId, transfer_id: id, completed: true, size: 6, object_key: "unused" };
+  const file = { id: fileId, transfer_id: id, completed: true, size: 6, object_key: "unused",
+    upload_id: "azure-v1:11111111-1111-4111-8111-111111111111" };
   const statuses = [];
   let sourceText = "abcdef";
   let locked = false;
@@ -68,10 +71,14 @@ test("NAS worker publishes only exact complete copies, removes expired copies an
     if (sql.includes("status='failed'")) { statuses.push("failed"); return { rows: [] }; }
     throw new Error("Unexpected worker query");
   } });
-  store.send = async () => {
-    assert.equal(locked, true);
-    return { Body: Readable.from([Buffer.from(sourceText)]) };
-  };
+  store.getContainerClient = () => ({
+    getBlockBlobClient: () => ({
+      download: async () => {
+        assert.equal(locked, true);
+        return { readableStreamBody: Readable.from([Buffer.from(sourceText)]) };
+      },
+    }),
+  });
   try {
     await syncNasTransfer(id, { root });
     assert.deepEqual(statuses, ["syncing", "available"]);
@@ -100,7 +107,7 @@ test("NAS worker publishes only exact complete copies, removes expired copies an
     assert.equal(locked, false);
   } finally {
     pool.connect = originalConnect;
-    store.send = originalSend;
+    store.getContainerClient = originalContainer;
     for (const key of Object.keys(process.env)) if (!(key in previous)) delete process.env[key];
     Object.assign(process.env, previous);
     await rm(root, { recursive: true, force: true });
@@ -170,7 +177,9 @@ test("cloud employee issuance and local streaming enforce origin, session/ACL re
       const uuid = "11111111-1111-4111-8111-111111111111";
       const previous = { ...process.env };
       Object.assign(process.env, {
-        DATABASE_URL: "postgres://unused/test", S3_BUCKET: "unused", AWS_REGION: "us-east-1",
+        DATABASE_URL: "postgres://unused/test",
+        AZURE_STORAGE_ACCOUNT_NAME: "teststorageaccount", AZURE_STORAGE_CONTAINER: "test-transfers",
+        AZURE_STORAGE_ACCOUNT_KEY: Buffer.from("nonfunctional-storage-test-key").toString("base64"),
         RESEND_API_KEY: "unused", FROM_EMAIL: "sender@example.test", APP_URL: "https://app.example.test",
         CRON_SECRET: "test-cron-independent-value-1234567890", COOKIE_SECRET: "test-cookie-independent-value-1234567890",
         ENTRA_TENANT_ID: uuid, ENTRA_CLIENT_ID: uuid, ENTRA_CLIENT_SECRET: "unused",

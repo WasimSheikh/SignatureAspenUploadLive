@@ -1,11 +1,58 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { uploadParts, UPLOAD_CONCURRENCY } from "../src/lib/upload-client.mjs";
+import { putPart, uploadParts, UPLOAD_CONCURRENCY } from "../src/lib/upload-client.mjs";
 
 function fixture() {
   const files = [Object.assign(new Blob(["abcdefghij"]), { name: "design.pdf" })];
   return { files, remoteFiles: [{ id: "file", name: "design.pdf", size: 10, partSize: 2, parts: [] }] };
 }
+
+test("Azure Put Block sends raw bytes and accepts 201 without an ETag", async () => {
+  const original = globalThis.XMLHttpRequest;
+  let sent, method, target, progress;
+  const blob = new Blob(["design block"]);
+  const url = "https://account.blob.core.windows.net/transfers/staging/file?comp=block";
+  globalThis.XMLHttpRequest = class {
+    upload = {};
+    open(verb, address) { method = verb; target = address; }
+    send(body) {
+      sent = body;
+      this.upload.onprogress({ loaded: body.size });
+      this.status = 201;
+      this.onload();
+      this.onloadend();
+    }
+  };
+  try {
+    await putPart(url, blob, new AbortController().signal, (bytes) => { progress = bytes; });
+    assert.equal(method, "PUT");
+    assert.equal(target, url);
+    assert.equal(sent, blob);
+    assert.equal(progress, blob.size);
+  } finally { globalThis.XMLHttpRequest = original; }
+});
+
+test("Azure block HTTP failures reject and a paused upload sends no request", async () => {
+  const original = globalThis.XMLHttpRequest;
+  let sent = 0;
+  globalThis.XMLHttpRequest = class {
+    upload = {};
+    open() {}
+    send() {
+      sent++;
+      this.status = 403;
+      this.onload();
+      this.onloadend();
+    }
+  };
+  try {
+    await assert.rejects(putPart("https://example.com", new Blob(["data"]), new AbortController().signal, () => {}), /Azure Blob CORS/);
+    const controller = new AbortController();
+    controller.abort();
+    await assert.rejects(putPart("https://example.com", new Blob(["data"]), controller.signal, () => {}), { name: "AbortError" });
+    assert.equal(sent, 1);
+  } finally { globalThis.XMLHttpRequest = original; }
+});
 
 test("parallel uploads are bounded and progress counts each byte exactly once", async () => {
   let active = 0, peak = 0;

@@ -378,8 +378,8 @@ test("unexpected errors never reveal infrastructure credentials", async () => {
 
 test("authorized employee cloud file and ZIP downloads bypass passcode without setting a public unlock cookie", async () => {
   Object.assign(process.env, {
-    S3_BUCKET: "test-bucket", AWS_REGION: "us-east-1",
-    AWS_ACCESS_KEY_ID: "test-access", AWS_SECRET_ACCESS_KEY: "nonfunctional-test-secret",
+    AZURE_STORAGE_ACCOUNT_NAME: "teststorageaccount", AZURE_STORAGE_CONTAINER: "test-transfers",
+    AZURE_STORAGE_ACCOUNT_KEY: Buffer.from("nonfunctional-storage-test-key").toString("base64"),
     RESEND_API_KEY: "test-resend", FROM_EMAIL: "sender@example.com",
     CRON_SECRET: "nonfunctional-test-cron-secret-32-characters",
   });
@@ -387,12 +387,18 @@ test("authorized employee cloud file and ZIP downloads bypass passcode without s
   const { storage } = await import("../src/lib/storage.js");
   const cloudDb = db();
   const originalQuery = cloudDb.query;
-  const originalSend = storage().send;
+  const originalContainer = storage().getContainerClient;
   cloudDb.query = async (sql) => ({
     rows: sql.includes("FROM transfers") ? [{ ...transfer, completed_at: new Date() }]
-      : sql.includes("FROM transfer_files") ? [{ ...file, object_key: "test/design.pdf" }] : [],
+      : sql.includes("FROM transfer_files") ? [{ ...file, object_key: "test/design.pdf",
+        upload_id: "azure-v1:11111111-1111-4111-8111-111111111111" }] : [],
   });
-  storage().send = async () => ({ Body: Readable.from([Buffer.from("design data")]) });
+  storage().getContainerClient = () => ({
+    getBlockBlobClient: (key) => ({
+      url: `https://teststorageaccount.blob.core.windows.net/test-transfers/${key}`,
+      download: async () => ({ readableStreamBody: Readable.from([Buffer.from("design data")]) }),
+    }),
+  });
   try {
     await withQueries(async (sql) => ({
       rows: sql.includes("employee_sessions") ? [sessionRow]
@@ -402,7 +408,10 @@ test("authorized employee cloud file and ZIP downloads bypass passcode without s
         { headers: { cookie: sessionCookie } });
       const response = await employeeDownload(downloadRequest, { params: Promise.resolve({ id }) });
       assert.equal(response.status, 302);
-      assert.match(response.headers.get("location"), /X-Amz-Signature=/);
+      const location = new URL(response.headers.get("location"));
+      assert.equal(location.hostname, "teststorageaccount.blob.core.windows.net");
+      assert.ok(location.searchParams.has("sig"));
+      assert.equal(location.searchParams.get("sp"), "r");
       assert.equal(response.headers.get("set-cookie"), null);
       const zip = await employeeDownload(request(sessionCookie), { params: Promise.resolve({ id }) });
       assert.equal(zip.status, 200);
@@ -414,6 +423,6 @@ test("authorized employee cloud file and ZIP downloads bypass passcode without s
     });
   } finally {
     cloudDb.query = originalQuery;
-    storage().send = originalSend;
+    storage().getContainerClient = originalContainer;
   }
 });

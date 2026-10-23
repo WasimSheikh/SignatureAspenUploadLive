@@ -8,12 +8,16 @@ function integer(name, fallback, max = Number.MAX_SAFE_INTEGER) {
 
 export function config() {
   if (cached) return cached;
-  for (const name of ["DATABASE_URL", "S3_BUCKET", "AWS_REGION",
+  for (const name of ["DATABASE_URL", "AZURE_STORAGE_ACCOUNT_NAME", "AZURE_STORAGE_CONTAINER",
     "RESEND_API_KEY", "FROM_EMAIL", "APP_URL", "CRON_SECRET", "COOKIE_SECRET"]) {
     if (!process.env[name]) throw new Error(`Missing configuration: ${name}`);
   }
-  if (!!process.env.AWS_ACCESS_KEY_ID !== !!process.env.AWS_SECRET_ACCESS_KEY) {
-    throw new Error("Storage credential configuration is incomplete");
+  if (!/^[a-z0-9]{3,24}$/.test(process.env.AZURE_STORAGE_ACCOUNT_NAME)) throw new Error("Invalid Azure storage account name");
+  if (!/^(?!.*--)[a-z0-9][a-z0-9-]{1,61}[a-z0-9]$/.test(process.env.AZURE_STORAGE_CONTAINER)) throw new Error("Invalid Azure storage container");
+  const storageAccountKey = process.env.AZURE_STORAGE_ACCOUNT_KEY;
+  if (storageAccountKey && (!/^[A-Za-z0-9+/]+={0,2}$/.test(storageAccountKey) ||
+      Buffer.from(storageAccountKey, "base64").toString("base64") !== storageAccountKey)) {
+    throw new Error("Invalid Azure storage account key");
   }
   const appUrl = new URL(process.env.APP_URL);
   if (!["https:", "http:"].includes(appUrl.protocol) || appUrl.username || appUrl.password ||
@@ -22,10 +26,9 @@ export function config() {
   if (process.env.COOKIE_SECRET.length < 32 || process.env.CRON_SECRET.length < 32) throw new Error("Secrets must be at least 32 characters");
   cached = {
     databaseUrl: process.env.DATABASE_URL,
-    bucket: process.env.S3_BUCKET,
-    region: process.env.AWS_REGION,
-    endpoint: process.env.S3_ENDPOINT || undefined,
-    forcePathStyle: process.env.S3_FORCE_PATH_STYLE === "true",
+    storageAccount: process.env.AZURE_STORAGE_ACCOUNT_NAME,
+    storageContainer: process.env.AZURE_STORAGE_CONTAINER,
+    storageAccountKey: storageAccountKey || undefined,
     appUrl: appUrl.origin,
     cookieSecret: process.env.COOKIE_SECRET,
     cronSecret: process.env.CRON_SECRET,

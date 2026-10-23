@@ -2,7 +2,7 @@ import { config } from "./config.js";
 import { db, withTransferLock, getTransfer, getFiles } from "./db.js";
 import { endpoint, json } from "./http.js";
 import { equalSecret, fail } from "./security.mjs";
-import { removeFile } from "./storage.js";
+import { removeFile, cleanupStaging } from "./storage.js";
 import { sendTransferEmails } from "./email.js";
 
 export const cleanupTransfers = endpoint(async (request) => {
@@ -77,5 +77,13 @@ export const cleanupTransfers = endpoint(async (request) => {
       }
     }
   }
+  try {
+    await cleanupStaging(async (transferId, fileId, uploadId) => {
+      const result = await db().query(`SELECT 1 FROM transfers t JOIN transfer_files f ON f.transfer_id = t.id
+        WHERE t.id = $1 AND f.id = $2 AND (f.upload_id = $3 OR f.upload_id IS NULL) AND t.expires_at > now()
+        AND t.status IN ('uploading', 'completing')`, [transferId, fileId, uploadId]);
+      return result.rowCount > 0;
+    });
+  } catch { counts.failed++; console.error("Staging cleanup failed."); }
   return json(counts, counts.failed ? 207 : 200);
 });

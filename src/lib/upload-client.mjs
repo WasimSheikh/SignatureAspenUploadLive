@@ -1,5 +1,28 @@
 export const UPLOAD_CONCURRENCY = 3;
 
+export function putPart(url, blob, signal, progress) {
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    const abort = () => xhr.abort();
+    signal.addEventListener("abort", abort, { once: true });
+    xhr.open("PUT", url);
+    xhr.timeout = 180000;
+    xhr.upload.onprogress = (event) => progress(event.loaded);
+    xhr.onload = () => {
+      if (xhr.status >= 200 && xhr.status < 300) resolve();
+      else reject(new Error("Storage upload failed. Check the Azure Blob CORS policy and retry."));
+    };
+    xhr.onerror = () => reject(new Error("Connection interrupted. Please resume your upload."));
+    xhr.ontimeout = () => reject(new Error("Upload timed out. Please resume."));
+    xhr.onabort = () => reject(new DOMException("Upload paused", "AbortError"));
+    xhr.onloadend = () => signal.removeEventListener("abort", abort);
+    if (signal.aborted) {
+      signal.removeEventListener("abort", abort);
+      reject(new DOMException("Upload paused", "AbortError"));
+    } else xhr.send(blob);
+  });
+}
+
 function wait(milliseconds, signal) {
   return new Promise((resolve, reject) => {
     const abort = () => {

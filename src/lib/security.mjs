@@ -3,7 +3,7 @@ import { promisify } from "node:util";
 
 const scrypt = promisify(scryptCallback);
 export const BASE_PART_SIZE = 16 * 1024 * 1024;
-export const MAX_S3_PARTS = 10000;
+export const MAX_UPLOAD_PARTS = 10000;
 const allowedExtensions = new Set(["psd", "ai", "pdf", "zip", "tif", "tiff"]);
 
 export class HttpError extends Error {
@@ -33,7 +33,7 @@ export function equalSecret(a, b) {
 }
 
 export function partSizeFor(size) {
-  return Math.max(BASE_PART_SIZE, Math.ceil(size / MAX_S3_PARTS / (1024 * 1024)) * 1024 * 1024);
+  return Math.max(BASE_PART_SIZE, Math.ceil(size / MAX_UPLOAD_PARTS / (1024 * 1024)) * 1024 * 1024);
 }
 
 export function expectedPartSize(size, partSize, partNumber) {
