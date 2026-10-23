@@ -185,6 +185,39 @@ test("object downloads return a streaming source", async () => {
   } finally { s3.send = original; }
 });
 
+test("delivery emails include escaped file inventories in HTML and readable plain text", async () => {
+  const { sendTransferEmails } = await import("../src/lib/email.js");
+  const originalFetch = globalThis.fetch;
+  const deliveries = [];
+  const client = {
+    query: async (sql) => ({
+      rows: sql.startsWith("SELECT * FROM transfer_files")
+        ? [{ name: '<asset "final">.pdf', size: 2048 }, { name: "large.psd", size: 12 * 1024 ** 3 }]
+        : [],
+    }),
+  };
+  try {
+    globalThis.fetch = async (_url, options) => {
+      deliveries.push(JSON.parse(options.body));
+      return Response.json({ id: randomId() });
+    };
+    assert.equal(await sendTransferEmails(client, {
+      ...transfer, recipient_emails: ["recipient@example.com"], email_results: {}, email_status: "pending",
+    }), "sent");
+    assert.equal(deliveries.length, 2);
+    for (const delivery of deliveries) {
+      assert.ok(delivery.html.includes("&lt;asset &quot;final&quot;&gt;.pdf"));
+      assert.ok(!delivery.html.includes('<asset "final">'));
+      assert.ok(delivery.html.includes("2,048 bytes"));
+      assert.ok(delivery.html.includes("12,884,901,888 bytes"));
+      assert.ok(delivery.text.includes('- <asset "final">.pdf — 2,048 bytes'));
+      assert.ok(delivery.text.includes("- large.psd — 12,884,901,888 bytes"));
+    }
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
 test("PostgreSQL-backed lifecycle: resume, protected delivery, email idempotency, ZIP, cancel and expiry", {
   skip: !process.env.TEST_DATABASE_URL,
 }, async () => {
@@ -287,6 +320,7 @@ test("PostgreSQL-backed lifecycle: resume, protected delivery, email idempotency
     assert.equal(deliveries.length, 2);
     assert.ok(deliveries[0].html.includes("&lt;script&gt;"));
     assert.ok(!deliveries[0].html.includes("<script>"));
+    assert.ok(deliveries[0].html.includes("artwork.pdf — 3 bytes"));
     await handlers.completeTransfer(request(`${path}/complete`, "POST", {}, upload.uploadToken), ctx);
     assert.equal(deliveries.length, 2);
     const completedResume = await handlers.uploadStatus(request(`${path}/upload`, "GET", undefined, upload.uploadToken), ctx);

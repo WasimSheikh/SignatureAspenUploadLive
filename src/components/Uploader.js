@@ -105,6 +105,7 @@ export default function Uploader() {
   async function upload(event) {
     event.preventDefault();
     if (!files.length) { setError("Select the files you want to send."); return; }
+    const fields = Object.fromEntries(new FormData(form.current));
     setBusy(true);
     setError("");
     setNotice("");
@@ -117,7 +118,6 @@ export default function Uploader() {
         throw new Error("To resume, reselect the same files in the same order, or cancel this transfer to start a new one.");
       }
       if (!session) {
-        const fields = Object.fromEntries(new FormData(form.current));
         const created = await api("/api/transfers", {
           method: "POST",
           body: JSON.stringify({

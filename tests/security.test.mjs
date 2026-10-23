@@ -42,6 +42,8 @@ test("rejects invalid email, retention, metadata and passcodes", () => {
     { recipientEmails: ["recipient@example.com"] },
     { recipientEmails: "" }, { recipientEmails: "valid@example.com," },
     { retentionDays: "7" }, { retentionDays: 90 }, { title: "x".repeat(201) },
+    { title: "" }, { title: "   " }, { title: undefined }, { title: null },
+    { company: "" }, { company: "   " }, { company: undefined }, { company: null },
     { company: { name: "bad" } }, { message: "\u0000" }, { passcode: "123" }, { passcode: "1234567" },
     { passcode: "x".repeat(129) }, { passcode: 1234 }, { files: [] },
   ]) invalid(() => validateTransfer(input(overrides)));

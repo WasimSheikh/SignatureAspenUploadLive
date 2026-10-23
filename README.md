@@ -36,7 +36,7 @@ Storage and email are external services. An email failure must not discard a suc
 
 ## Storage setup
 
-Allow the application role to perform `s3:PutObject`, `s3:GetObject`, `s3:DeleteObject`, `s3:AbortMultipartUpload` and `s3:ListMultipartUploadParts` for the bucket's objects. S3 multipart create/complete/signing operations use these permissions. Enable encryption at rest and TLS-only access at the bucket/provider level.
+Allow the application role to perform `s3:PutObject`, `s3:GetObject`, `s3:DeleteObject`, `s3:AbortMultipartUpload` and `s3:ListMultipartUploadParts` for the bucket's objects. Also grant `s3:ListBucket` on the **bucket ARN** (not the object ARN): completion recovery checks for an existing object with `HeadObject`, and S3 requires this permission to return 404 rather than 403 for a missing object. S3 multipart create/complete/signing operations use these permissions. Enable encryption at rest and TLS-only access at the bucket/provider level.
 
 Configure bucket CORS with your **exact** frontend origin (not a wildcard):
 

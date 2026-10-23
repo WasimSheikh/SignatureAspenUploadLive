@@ -74,8 +74,9 @@ export function validateTransfer(input, limits = {}) {
   const recipientEmails = [...new Set(input.recipientEmails.split(",").map(email))];
   if (!recipientEmails.length || recipientEmails.length > maxRecipients) fail(400, "Too many recipients.");
   if (![7, 14, 30].includes(input.retentionDays)) fail(400, "Retention must be 7, 14, or 30 days.");
-  const title = text(input.title, "title", 200, "Design files") || "Design files";
+  const title = text(input.title, "title", 200);
   const company = text(input.company, "company", 200);
+  if (!title || !company) fail(400, "Title and company are required.");
   const message = text(input.message, "message", 5000);
   const passcode = input.passcode ?? "";
   if (typeof passcode !== "string" || (passcode.length > 0 && (passcode.length < 8 || passcode.length > 128))) {
