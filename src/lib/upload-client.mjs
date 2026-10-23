@@ -28,7 +28,7 @@ export async function uploadParts({
   let done = 0;
   for (let index = 0; index < files.length; index++) {
     const remote = remoteFiles[index];
-    if (files[index].size !== remote.size || files[index].name !== remote.name) {
+    if (files[index].size !== remote.size || files[index].name.trim().normalize("NFC") !== remote.name) {
       throw new Error("The selected files do not match this transfer.");
     }
     const chunkSize = remote.partSize || partSize;

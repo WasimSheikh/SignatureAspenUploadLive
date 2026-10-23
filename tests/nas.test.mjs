@@ -6,13 +6,25 @@ import { randomBytes } from "node:crypto";
 import { Readable } from "node:stream";
 import { createServer } from "node:http";
 import { nasConfig, signNasToken, verifyNasToken, byteRange } from "../src/lib/nas-security.mjs";
-import { withNasRoot, withNasDirectory, mirrorNasFile, openNasFile, removeNasTransfer } from "../src/lib/nas-files.mjs";
+import { withNasRoot, withNasDirectory, mirrorNasFile, openNasFile, removeNasTransfer, networkMountFor } from "../src/lib/nas-files.mjs";
 
 const id = "a".repeat(32);
 const fileId = "b".repeat(32);
 const secret = "nas-test-independent-secret-value-123456789";
 const scope = { transferId: id, fileId, employeeId: "employee-id", sessionHash: "c".repeat(64) };
 const now = 1700000000000;
+
+test("mount validation rejects disconnected mounts and local underlying fallback directories", () => {
+  const mounted = [
+    "1 0 0:1 / / rw - ext4 /dev/sda1 rw",
+    "2 1 0:2 / /mnt/nas rw - cifs //nas/share rw",
+  ].join("\n");
+  assert.deepEqual(networkMountFor("/mnt/nas/transfers", mounted), { mount: "/mnt/nas", type: "cifs" });
+  assert.throws(() => networkMountFor("/mnt/nas/transfers", mounted.split("\n")[0]));
+  assert.throws(() => networkMountFor("/mnt/nasty/transfers", mounted));
+  assert.throws(() => networkMountFor("/mnt/nas/transfers", `${mounted}\n3 2 0:3 / /mnt/nas/transfers rw - ext4 /dev/sdb1 rw`));
+  assert.equal(networkMountFor("/mnt/nas shared/transfers", "2 1 0:2 / /mnt/nas\\040shared rw - nfs4 nas:/share rw").type, "nfs4");
+});
 
 test("NAS disabled by default and configured origins cannot redirect to arbitrary paths", () => {
   assert.deepEqual(nasConfig({}), { enabled: false });
@@ -24,6 +36,76 @@ test("NAS disabled by default and configured origins cannot redirect to arbitrar
   assert.throws(() => nasConfig({ ...env, COOKIE_SECRET: secret }));
   assert.throws(() => nasConfig({ ...env, NAS_BIND_HOST: "nas.example.test" }));
   assert.equal(nasConfig({ ...env, NAS_LOCAL_URL: "http://127.0.0.1:8787" }).enabled, true);
+});
+
+test("NAS worker publishes only exact complete copies, removes expired copies and retries failures safely", async () => {
+  const root = resolve(`.next/cache/nas-tests/test-${randomBytes(8).toString("hex")}`);
+  await mkdir(root, { recursive: true });
+  const previous = { ...process.env };
+  Object.assign(process.env, {
+    DATABASE_URL: "postgres://unused/test", S3_BUCKET: "unused", AWS_REGION: "us-east-1",
+    RESEND_API_KEY: "unused", FROM_EMAIL: "sender@example.test", APP_URL: "https://app.example.test",
+    CRON_SECRET: "test-cron-independent-value-1234567890", COOKIE_SECRET: "test-cookie-independent-value-1234567890",
+  });
+  const { db } = await import("../src/lib/db.js");
+  const { storage } = await import("../src/lib/storage.js");
+  const { syncNasTransfer } = await import("../src/lib/nas-worker.js");
+  const pool = db();
+  const originalConnect = pool.connect;
+  const store = storage();
+  const originalSend = store.send;
+  const transfer = { id, status: "complete", expires_at: new Date(Date.now() + 120000) };
+  const file = { id: fileId, transfer_id: id, completed: true, size: 6, object_key: "unused" };
+  const statuses = [];
+  let sourceText = "abcdef";
+  let locked = false;
+  pool.connect = async () => ({ release() {}, async query(sql) {
+    if (sql.includes("pg_try_advisory_lock")) { locked = true; return { rows: [{ locked: true }] }; }
+    if (sql.includes("pg_advisory_unlock")) { locked = false; return { rows: [] }; }
+    if (sql.includes("SELECT * FROM transfers")) return { rows: [transfer] };
+    if (sql.includes("FROM transfer_files")) return { rows: [file] };
+    if (sql.includes("INSERT INTO nas_mirrors")) { statuses.push("syncing"); return { rows: [] }; }
+    if (sql.includes("status='available'")) { statuses.push("available"); return { rows: [] }; }
+    if (sql.includes("status='failed'")) { statuses.push("failed"); return { rows: [] }; }
+    throw new Error("Unexpected worker query");
+  } });
+  store.send = async () => {
+    assert.equal(locked, true);
+    return { Body: Readable.from([Buffer.from(sourceText)]) };
+  };
+  try {
+    await syncNasTransfer(id, { root });
+    assert.deepEqual(statuses, ["syncing", "available"]);
+    assert.equal((await readFile(`${root}/${id}/${fileId}`)).toString(), "abcdef");
+    sourceText = "short";
+    await assert.rejects(syncNasTransfer(id, { root }));
+    assert.deepEqual(statuses.slice(-2), ["syncing", "failed"]);
+    await assert.rejects(stat(`${root}/${id}`), { code: "ENOENT" });
+    sourceText = "abcdef";
+    await syncNasTransfer(id, { root });
+    transfer.expires_at = new Date(Date.now() - 1);
+    await syncNasTransfer(id, { root });
+    assert.equal(statuses.at(-1), "failed");
+    await assert.rejects(stat(`${root}/${id}`), { code: "ENOENT" });
+    transfer.expires_at = new Date(Date.now() + 120000);
+    await syncNasTransfer(id, { root });
+    transfer.status = "deleted";
+    await syncNasTransfer(id, { root });
+    await assert.rejects(stat(`${root}/${id}`), { code: "ENOENT" });
+    transfer.status = "complete";
+    const controller = new AbortController();
+    controller.abort();
+    await assert.rejects(syncNasTransfer(id, { root }, controller.signal));
+    assert.equal(statuses.at(-1), "failed");
+    await assert.rejects(stat(`${root}/${id}`), { code: "ENOENT" });
+    assert.equal(locked, false);
+  } finally {
+    pool.connect = originalConnect;
+    store.send = originalSend;
+    for (const key of Object.keys(process.env)) if (!(key in previous)) delete process.env[key];
+    Object.assign(process.env, previous);
+    await rm(root, { recursive: true, force: true });
+  }
 });
 
 test("NAS tokens bind employee, session, transfer and file; max lifetime is 60 seconds", () => {
@@ -50,10 +132,10 @@ test("single byte ranges support normal, open and suffix requests; malformed/mul
 });
 
 test("NAS copies stream atomically, validate exact bytes, reject symlinks and remove all transfer files", async () => {
-  const root = resolve(`.nas-test-${randomBytes(8).toString("hex")}`);
-  const outside = resolve(`.nas-outside-${randomBytes(8).toString("hex")}`);
-  await mkdir(root);
-  await mkdir(outside);
+  const root = resolve(`.next/cache/nas-tests/test-${randomBytes(8).toString("hex")}`);
+  const outside = resolve(`.next/cache/nas-tests/outside-${randomBytes(8).toString("hex")}`);
+  await mkdir(root, { recursive: true });
+  await mkdir(outside, { recursive: true });
   const file = { id: fileId, size: 6 };
   try {
     await withNasDirectory(root, id, true, async (directory) => {
@@ -87,8 +169,8 @@ test("NAS copies stream atomically, validate exact bytes, reject symlinks and re
 });
 
 test("cloud employee issuance and local streaming enforce origin, session/ACL revocation, expiry and ranges", async () => {
-      const root = resolve(`.nas-test-${randomBytes(8).toString("hex")}`);
-      await mkdir(root);
+      const root = resolve(`.next/cache/nas-tests/test-${randomBytes(8).toString("hex")}`);
+      await mkdir(root, { recursive: true });
       const uuid = "11111111-1111-4111-8111-111111111111";
       const previous = { ...process.env };
       Object.assign(process.env, {
@@ -108,17 +190,20 @@ test("cloud employee issuance and local streaming enforce origin, session/ACL re
       const transfer = { id, status: "complete", expires_at: new Date(Date.now() + 120000) };
       const file = { id: fileId, transfer_id: id, completed: true, name: "test file.txt", size: 6 };
       let sessionActive = true;
+      let sessionExpiresAt = Date.now() + 120000;
+      let mirrorStatus = "available";
       let allowed = true;
       let locked = false;
       const events = [];
       const client = { release() {}, async query(sql, params) {
         if (sql.includes("pg_try_advisory_lock")) { locked = true; return { rows: [{ locked: true }] }; }
         if (sql.includes("pg_advisory_unlock")) { locked = false; return { rows: [] }; }
-        if (sql.includes("FROM employee_sessions")) return { rows: sessionActive ? [{ employee_id: uuid, group_ids: [uuid] }] : [] };
+        if (sql.includes("FROM employee_sessions")) return { rows: sessionActive && sessionExpiresAt > Date.now() ? [{ employee_id: uuid, group_ids: [uuid] }] : [] };
         if (sql.includes("SELECT t.id FROM transfers")) return { rows: allowed ? [{ id }] : [] };
         if (sql.includes("SELECT * FROM transfers")) return { rows: [transfer] };
         if (sql.includes("FROM transfer_files")) return { rows: [file] };
-        if (sql.includes("FROM nas_mirrors")) return { rows: [{ status: "available" }] };
+        if (sql.includes("FROM nas_mirrors")) return { rows: mirrorStatus ? [{ status: mirrorStatus }] : [] };
+        if (sql.includes("UPDATE nas_mirrors")) { mirrorStatus = "failed"; return { rows: [] }; }
         if (sql.includes("INSERT INTO transfer_access_events")) { events.push(params[1]); return { rows: [] }; }
         throw new Error(`Unexpected query: ${sql}`);
       } };
@@ -159,9 +244,23 @@ test("cloud employee issuance and local streaming enforce origin, session/ACL re
         assert.equal((await fetch(target)).status, 403);
         assert.equal((await post()).status, 401);
         sessionActive = true;
+        sessionExpiresAt = Date.now() - 1;
+        assert.equal((await fetch(target)).status, 403);
+        sessionExpiresAt = Date.now() + 120000;
         allowed = false;
         assert.equal((await fetch(target)).status, 404);
         allowed = true;
+        mirrorStatus = null;
+        assert.equal((await fetch(target)).status, 409);
+        assert.equal((await post()).status, 409);
+        mirrorStatus = "failed";
+        assert.equal((await fetch(target)).status, 409);
+        mirrorStatus = "available";
+        transfer.status = "deleted";
+        assert.equal((await fetch(target)).status, 410);
+        transfer.status = "deleting";
+        assert.equal((await fetch(target)).status, 410);
+        transfer.status = "complete";
         transfer.expires_at = new Date(Date.now() - 1);
         assert.equal((await fetch(target)).status, 410);
         assert.equal((await fetch(`${address}/download?token=invalid`)).status, 401);

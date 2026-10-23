@@ -5,7 +5,7 @@ import { employeeConfig, approvedGroups } from "./employee-security.mjs";
 import { requireLive } from "./http.js";
 import { fail } from "./security.mjs";
 import { verifyNasToken, byteRange } from "./nas-security.mjs";
-import { withNasDirectory, openNasFile } from "./nas-files.mjs";
+import { withNasDirectory, openNasFile, requireNasMount } from "./nas-files.mjs";
 
 export function nasRequestHandler(settings) {
   return async (request, response) => {
@@ -44,12 +44,16 @@ export function nasRequestHandler(settings) {
           response.setHeader("Content-Range", `bytes */${file.size}`);
           fail(416, "Requested range is not available.");
         }
-        await withNasDirectory(settings.root, transfer.id, false, async (directory) => {
+        await (async () => {
+          if (settings.requireMount) await requireNasMount(settings.root);
+          return withNasDirectory(settings.root, transfer.id, false, async (directory) => {
           const handle = await openNasFile(directory, file);
           try {
             // No sensitive tokens, filenames, filesystem paths, or object keys are logged.
             await recordAccess(client, transfer.id, "local_file_download", file.id);
             requireLive(transfer);
+            try { verifyNasToken(url.searchParams.get("token"), settings.secret); }
+            catch { fail(401, "Local download authorization has expired."); }
             const fallback = file.name.replace(/[^\x20-\x7e]|["\\]/g, "_");
             const encoded = encodeURIComponent(file.name).replace(/['()*]/g, (char) => `%${char.charCodeAt(0).toString(16).toUpperCase()}`);
             response.setHeader("Content-Type", "application/octet-stream");
@@ -70,6 +74,13 @@ export function nasRequestHandler(settings) {
               response.removeListener("close", stop);
             }
           } finally { await handle.close(); }
+          });
+        })().catch(async (error) => {
+          if (["ENOENT", "ENOTDIR", "ELOOP", "EIO", "EACCES", "NAS_MOUNT_UNAVAILABLE"].includes(error.code) ||
+              error.message === "Local copy is invalid") {
+            await client.query("UPDATE nas_mirrors SET status='failed',error='Local copy unavailable; retry pending',updated_at=now() WHERE transfer_id=$1", [transfer.id]);
+          }
+          throw error;
         });
       });
     } catch (error) {

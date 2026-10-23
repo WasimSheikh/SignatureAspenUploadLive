@@ -141,7 +141,7 @@ export const authCallback = async (request) => {
         VALUES ($1,$2,$3,$4,$5,$6::jsonb,now() + interval '8 hours')`,
       [hashToken(opaque), cfg.tenant, verified.employee.id, verified.employee.name,
         verified.employee.email, JSON.stringify(verified.groups), previousHash]);
-    response = redirect(`${cfg.appUrl}/employee`);
+    response = redirect(`${cfg.appUrl}/`);
     response.headers.append("Set-Cookie", employeeCookie(SESSION_COOKIE, opaque, cfg, SESSION_SECONDS));
   } catch (error) {
     // Never render the callback query or upstream errors, which can contain codes/tokens.

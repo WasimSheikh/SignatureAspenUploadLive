@@ -22,7 +22,7 @@ export function nasConfig(env = process.env, { filesystem = false } = {}) {
   if (!Number.isSafeInteger(port) || port < 1 || port > 65535 ||
       !Number.isSafeInteger(interval) || interval < 1000) throw new Error("Invalid NAS port or interval");
   if (filesystem && (!env.NAS_ROOT || !env.NAS_ROOT.startsWith("/"))) throw new Error("NAS_ROOT must be an existing absolute directory");
-  return { enabled: true, secret: env.NAS_SIGNING_SECRET, origin: url.origin, root: env.NAS_ROOT, host, port, interval };
+  return { enabled: true, secret: env.NAS_SIGNING_SECRET, origin: url.origin, root: env.NAS_ROOT, host, port, interval, requireMount: filesystem };
 }
 
 export function signNasToken({ transferId, fileId, employeeId, sessionHash }, secret, expiresAt, now = Date.now()) {

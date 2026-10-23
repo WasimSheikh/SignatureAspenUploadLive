@@ -1,4 +1,6 @@
 -- Apply after db/schema.sql. Access identifiers are Entra oid claims, never email.
+-- Entra ID tokens must contain direct security-group IDs and the optional acct
+-- claim (0 = member). Missing membership, group overage, and guests fail closed.
 BEGIN;
 CREATE TABLE IF NOT EXISTS employee_sessions (
   token_hash text PRIMARY KEY CHECK (token_hash ~ '^[a-f0-9]{64}$'),

@@ -4,6 +4,7 @@ import {
 } from "./employee-auth.js";
 import { employeeConfig } from "./employee-security.mjs";
 import { fail, signUnlock } from "./security.mjs";
+import { readJson } from "./http.js";
 
 const transferIdPattern = /^[A-Za-z0-9_-]{32}$/;
 export async function employeeHasTransfer(client, employee, id) {
@@ -51,7 +52,9 @@ export const employeeTransfers = employeeEndpoint(async (request) => {
       SELECT 1 FROM transfer_employee_access a WHERE a.transfer_id = t.id AND a.employee_id = $2::uuid
     ))
     AND ($3 = '' OR position(lower($3) in lower(t.title)) > 0
-      OR position(lower($3) in lower(t.company)) > 0)
+      OR position(lower($3) in lower(t.company)) > 0
+      OR EXISTS (SELECT 1 FROM transfer_files f WHERE f.transfer_id = t.id
+        AND position(lower($3) in lower(f.name)) > 0))
     ORDER BY t.created_at DESC,t.id DESC LIMIT 21 OFFSET $4`,
   [employee.admin, employee.id, query, (page - 1) * 20]);
   const visible = rows.slice(0, 20);
@@ -66,7 +69,8 @@ export const employeeTransfers = employeeEndpoint(async (request) => {
       expiresAt: new Date(row.expires_at).toISOString(),
       totalSize: transferFiles.reduce((sum, file) => sum + Number(file.size), 0),
       files: transferFiles.map((file) => ({ id: file.id, name: file.name, size: Number(file.size) })),
-      nasStatus: mirrors.find((mirror) => mirror.transfer_id === row.id)?.status || null,
+      nasStatus: mirrors.find((mirror) => mirror.transfer_id === row.id)?.status ||
+        (process.env.NAS_ENABLED === "true" ? "pending" : null),
       canShare: true };
   }), page, hasMore: rows.length > 20 });
 });
@@ -77,6 +81,22 @@ export const employeeShare = employeeEndpoint(async (request, context) => {
   const { id } = await context.params;
   const { transfer } = await requireEmployeeTransfer(request, id);
   return employeeJson({ url: `${cfg.appUrl}/transfer/${transfer.id}`, requiresPasscode: !!transfer.passcode_hash });
+});
+
+export const employeeAssign = employeeEndpoint(async (request, context) => {
+  employeeOrigin(request);
+  const { id } = await context.params;
+  const client = employeeDatabase();
+  const { employee } = await requireEmployeeTransfer(request, id, client);
+  if (!employee.admin) fail(403, "Administrator access is required.");
+  const { employeeId } = await readJson(request);
+  if (typeof employeeId !== "string" ||
+      !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(employeeId)) {
+    fail(400, "A valid employee object ID is required.");
+  }
+  await client.query(`INSERT INTO transfer_employee_access (transfer_id, employee_id)
+    VALUES ($1,$2::uuid) ON CONFLICT DO NOTHING`, [id, employeeId.toLowerCase()]);
+  return employeeJson({ assigned: true });
 });
 
 export const employeeDownload = employeeEndpoint(async (request, context) => {

@@ -68,15 +68,14 @@ export const createPart = endpoint(async (request, context) => {
   requireOrigin(request);
   const id = await transferId(context);
   const body = await readJson(request);
-  return withTransferLock(id, async (client) => {
-    const transfer = await getTransfer(client, id);
-    requireUploadToken(request, transfer);
-    if (!["uploading", "completing"].includes(transfer.status)) fail(409, "Transfer is already complete.");
-    const files = await getFiles(client, id);
-    const file = files.find((candidate) => candidate.id === body.fileId);
-    if (!file) fail(404, "File not found.");
-    return json({ url: await signPart(transfer, file, body.partNumber) });
-  });
+  // Signing is read-only; lifecycle locks would serialize parallel chunk requests.
+  const transfer = await getTransfer(db(), id);
+  requireUploadToken(request, transfer);
+  if (!["uploading", "completing"].includes(transfer.status)) fail(409, "Transfer is already complete.");
+  const files = await getFiles(db(), id);
+  const file = files.find((candidate) => candidate.id === body.fileId);
+  if (!file) fail(404, "File not found.");
+  return json({ url: await signPart(transfer, file, body.partNumber) });
 });
 
 export const uploadStatus = endpoint(async (request, context) => {

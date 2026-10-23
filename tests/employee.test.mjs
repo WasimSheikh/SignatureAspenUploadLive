@@ -14,7 +14,7 @@ import {
 } from "../src/lib/employee-auth.js";
 import {
   employeeHasTransfer, requireEmployeeTransfer, recordEmployeeUpload, employeeTransfers,
-  employeeShare, employeeDownload,
+  employeeShare, employeeDownload, employeeAssign,
 } from "../src/lib/employees.js";
 
 const tenant = "11111111-1111-1111-1111-111111111111";
@@ -145,7 +145,7 @@ test("successful callback exchanges code with verifier, verifies remote JWKS and
       const callbackRequest = new Request(`${cfg.callbackUrl}?state=${nonce}&code=nonfunctional-code`, { headers: { cookie } });
       const response = await authCallback(callbackRequest);
       assert.equal(response.status, 303);
-      assert.equal(response.headers.get("location"), `${cfg.appUrl}/employee`);
+      assert.equal(response.headers.get("location"), `${cfg.appUrl}/`);
       const setCookie = response.headers.get("set-cookie");
       const session = setCookie.match(/employee_session=([A-Za-z0-9_-]{43})/)[1];
       assert.notEqual(session, opaque);
@@ -266,7 +266,7 @@ test("authorized transfer, listing and sharing never expose upload credentials o
   await withQueries(async (sql) => {
     if (sql.includes("employee_sessions")) return { rows: [sessionRow] };
     if (sql.includes("SELECT * FROM transfers")) return { rows: [{ ...transfer, upload_token_hash: "private" }] };
-    if (sql.includes("transfer_files")) return { rows: [file] };
+    if (sql.startsWith("SELECT * FROM transfer_files") || sql.startsWith("SELECT id,transfer_id")) return { rows: [file] };
     return { rows: [transfer] };
   }, async () => {
     const result = await requireEmployeeTransfer(request(sessionCookie), id);
@@ -298,6 +298,53 @@ test("unauthorized direct share/download and invalid pagination fail closed", as
     const response = await employeeTransfers(new Request("https://example.com/api/employee/transfers?page=-1",
       { headers: { cookie: sessionCookie } }));
     assert.equal(response.status, 400);
+  });
+});
+
+test("NAS-enabled transfers without a mirror row report pending and filename search stays ACL-scoped", async () => {
+  const original = process.env.NAS_ENABLED;
+  process.env.NAS_ENABLED = "true";
+  let listingSql;
+  try {
+    await withQueries(async (sql) => {
+      if (sql.includes("employee_sessions")) return { rows: [sessionRow] };
+      if (sql.includes("FROM nas_mirrors")) return { rows: [] };
+      if (sql.startsWith("SELECT id,transfer_id")) return { rows: [file] };
+      listingSql = sql;
+      return { rows: [transfer] };
+    }, async () => {
+      const response = await employeeTransfers(request(sessionCookie));
+      const result = await response.json();
+      assert.equal(result.transfers[0].nasStatus, "pending");
+      assert.match(listingSql, /FROM transfer_files f WHERE f.transfer_id = t.id/);
+      assert.match(listingSql, /position\(lower\(\$3\) in lower\(f.name\)\)/);
+      assert.match(listingSql, /a.employee_id = \$2::uuid/);
+    });
+  } finally {
+    if (original === undefined) delete process.env.NAS_ENABLED;
+    else process.env.NAS_ENABLED = original;
+  }
+});
+
+test("only approved-group administrators may assign access by object ID", async () => {
+  const post = (employeeId) => request(sessionCookie, { method: "POST",
+    headers: { origin: cfg.appUrl, "content-type": "application/json" },
+    body: JSON.stringify({ employeeId }) });
+  const context = { params: Promise.resolve({ id }) };
+  let admin = false;
+  const assignments = [];
+  await withQueries(async (sql, values) => {
+    if (sql.includes("employee_sessions")) return { rows: [{ ...sessionRow,
+      group_ids: admin ? [group, adminGroup] : [group] }] };
+    if (sql.includes("INSERT INTO transfer_employee_access")) assignments.push(values);
+    return { rows: sql.includes("transfer_files") ? [file] : [transfer] };
+  }, async () => {
+    assert.equal((await employeeAssign(post(oid), context)).status, 403);
+    admin = true;
+    assert.equal((await employeeAssign(post("employee@example.com"), context)).status, 400);
+    assert.equal(assignments.length, 0);
+    assert.equal((await employeeAssign(post(otherGroup), context)).status, 200);
+    assert.deepEqual(assignments, [[id, otherGroup]]);
   });
 });
 

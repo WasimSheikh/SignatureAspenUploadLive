@@ -2,11 +2,12 @@ import { db, getTransfer, getFiles, withTransferLock } from "./db.js";
 import { objectStream } from "./storage.js";
 import { requireLive } from "./http.js";
 import { nasConfig } from "./nas-security.mjs";
-import { eachNasTransfer, withNasDirectory, mirrorNasFile, removeNasTransfer } from "./nas-files.mjs";
+import { eachNasTransfer, withNasDirectory, mirrorNasFile, removeNasTransfer, requireNasMount } from "./nas-files.mjs";
 
 const live = (transfer) => transfer && transfer.status === "complete" && new Date(transfer.expires_at).getTime() > Date.now();
 
 export async function syncNasTransfer(id, settings, signal) {
+  if (settings.requireMount) await requireNasMount(settings.root);
   return withTransferLock(id, async (client) => {
     const transfer = await getTransfer(client, id);
     if (!live(transfer)) {
@@ -28,6 +29,7 @@ export async function syncNasTransfer(id, settings, signal) {
       await withNasDirectory(settings.root, id, true, async (directory) => {
         for (const file of files) {
           requireLive(transfer);
+          if (settings.requireMount) await requireNasMount(settings.root);
           controller.signal.throwIfAborted();
           const source = await objectStream(file, controller.signal);
           try { await mirrorNasFile(directory, file, source, controller.signal); }
@@ -51,6 +53,18 @@ export async function syncNasTransfer(id, settings, signal) {
 export async function runNasCycle(signal) {
   const settings = nasConfig(process.env, { filesystem: true });
   if (!settings.enabled) return { enabled: false };
+  try { await requireNasMount(settings.root); }
+  catch (error) {
+    const { rows } = await db().query("SELECT transfer_id FROM nas_mirrors WHERE status <> 'failed' LIMIT 100");
+    for (const { transfer_id: id } of rows) {
+      signal?.throwIfAborted();
+      try {
+        await withTransferLock(id, (client) => client.query(
+          "UPDATE nas_mirrors SET status='failed',error='NAS mount unavailable; retry pending',updated_at=now() WHERE transfer_id=$1", [id]));
+      } catch (lockError) { if (lockError.status !== 409) throw lockError; }
+    }
+    throw error;
+  }
   let removed = 0;
   // Disk enumeration also finds orphans whose cloud transfer/file rows have
   // already been removed by cloud cleanup, including interrupted partial copies.

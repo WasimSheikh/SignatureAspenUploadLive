@@ -307,6 +307,11 @@ test("PostgreSQL-backed lifecycle: resume, protected delivery, email idempotency
     assert.equal((await handlers.createPart(request(`${path}/parts`, "POST", {
       fileId: upload.files[0].id, partNumber: 1,
     }, upload.uploadToken), ctx)).status, 200);
+    const parallelSignatures = await Promise.all(Array.from({ length: 3 }, () =>
+      handlers.createPart(request(`${path}/parts`, "POST", {
+        fileId: upload.files[0].id, partNumber: 1,
+      }, upload.uploadToken), ctx)));
+    assert.deepEqual(parallelSignatures.map((response) => response.status), [200, 200, 200]);
     const empty = await handlers.completeTransfer(request(`${path}/complete`, "POST", {}, upload.uploadToken), ctx);
     assert.equal(empty.status, 409);
     assert.equal(deliveries.length, 0);

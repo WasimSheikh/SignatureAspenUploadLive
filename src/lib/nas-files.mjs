@@ -1,10 +1,39 @@
 import { constants } from "node:fs";
-import { open, realpath, mkdir, rename, unlink, rmdir, opendir } from "node:fs/promises";
+import { open, realpath, mkdir, rename, unlink, rmdir, opendir, readFile } from "node:fs/promises";
 import path from "node:path";
 import { randomBytes } from "node:crypto";
 import { Transform, Writable } from "node:stream";
 import { pipeline } from "node:stream/promises";
 import { nasId } from "./nas-security.mjs";
+
+const roots = new Map();
+
+export function networkMountFor(root, mountinfo) {
+  if (!path.isAbsolute(root)) throw new Error("Invalid NAS root");
+  let closest;
+  for (const line of mountinfo.split("\n")) {
+    const [details, filesystem] = line.split(" - ");
+    if (!filesystem) continue;
+    const mount = details.split(" ")[4]?.replace(/\\([0-7]{3})/g, (_, octal) => String.fromCharCode(parseInt(octal, 8)));
+    if (!mount || !(root === mount || root.startsWith(mount === "/" ? "/" : `${mount}/`))) continue;
+    if (!closest || mount.length >= closest.mount.length) closest = { mount, type: filesystem.split(" ")[0] };
+  }
+  if (!closest || !["cifs", "smb3", "nfs", "nfs4"].includes(closest.type)) {
+    throw new Error("NAS_ROOT must be on a currently mounted SMB/NFS filesystem");
+  }
+  return closest;
+}
+
+export async function requireNasMount(root) {
+  try {
+    if (process.platform !== "linux") throw new Error("The NAS service requires Linux");
+    networkMountFor(root, await readFile("/proc/self/mountinfo", "utf8"));
+  } catch {
+    const error = new Error("NAS mount unavailable");
+    error.code = "NAS_MOUNT_UNAVAILABLE";
+    throw error;
+  }
+}
 
 // Linux directory descriptors anchor every operation; no user-controlled name
 // or symlink can redirect a read, write, rename, or removal outside this root.
@@ -14,6 +43,10 @@ export async function withNasRoot(root, action) {
   const handle = await open(root, constants.O_RDONLY | constants.O_DIRECTORY | constants.O_NOFOLLOW);
   try {
     if (await realpath(`/proc/self/fd/${handle.fd}`) !== root) throw new Error("NAS root changed");
+    const { dev, ino } = await handle.stat();
+    const identity = `${dev}:${ino}`;
+    if (roots.has(root) && roots.get(root) !== identity) throw new Error("NAS root changed; restart after verifying the mount");
+    roots.set(root, identity);
     return await action(`/proc/self/fd/${handle.fd}`);
   } finally { await handle.close(); }
 }

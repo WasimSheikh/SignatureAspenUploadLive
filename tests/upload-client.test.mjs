@@ -94,7 +94,19 @@ test("completed transfers perform no PUTs; mismatched file lists are rejected", 
     sign: () => assert.fail("Already complete"), send: () => assert.fail("Already complete"),
     onProgress: (progress) => { last = progress; },
   });
+
   assert.equal(last.bytes, 10);
   await assert.rejects(uploadParts({ ...fixture(), remoteFiles: [], signal: new AbortController().signal }), /do not match/);
   await assert.rejects(uploadParts({ ...fixture(), concurrency: 0, signal: new AbortController().signal }), /concurrency/);
+});
+
+test("original filenames match server trimming and Unicode NFC normalization", async () => {
+  const files = [Object.assign(new Blob(["data"]), { name: " cafe\u0301.pdf " })];
+  let uploaded = false;
+  await uploadParts({
+    files, remoteFiles: [{ id: "file", name: "café.pdf", size: 4, partSize: 4, parts: [] }],
+    signal: new AbortController().signal, sign: async () => "signed",
+    send: async () => { uploaded = true; },
+  });
+  assert.equal(uploaded, true);
 });

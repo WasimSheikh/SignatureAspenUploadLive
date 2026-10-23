@@ -1,3 +1,7 @@
 import { employeeTransfers } from "@/lib/employees";
+import { connection } from "next/server";
 
-export const GET = employeeTransfers;
+export async function GET(request) {
+  await connection();
+  return employeeTransfers(request);
+}

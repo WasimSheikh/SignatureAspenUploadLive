@@ -1,6 +1,6 @@
 import { createServer } from "node:http";
 import { nasConfig } from "../src/lib/nas-security.mjs";
-import { withNasRoot } from "../src/lib/nas-files.mjs";
+import { withNasRoot, requireNasMount } from "../src/lib/nas-files.mjs";
 import { nasRequestHandler } from "../src/lib/nas-server.js";
 import { db } from "../src/lib/db.js";
 
@@ -8,6 +8,7 @@ const settings = nasConfig(process.env, { filesystem: true });
 if (!settings.enabled) {
   console.log("NAS local download service disabled.");
 } else {
+  await requireNasMount(settings.root);
   await withNasRoot(settings.root, async () => {});
   const server = createServer({ maxHeaderSize: 8192, requestTimeout: 30000, headersTimeout: 15000 }, nasRequestHandler(settings));
   server.maxRequestsPerSocket = 100;
