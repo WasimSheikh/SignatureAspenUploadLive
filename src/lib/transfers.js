@@ -6,6 +6,7 @@ import { randomId, hashToken, validateTransfer, makePasscodeHash, verifyPasscode
   signUnlock, fail } from "./security.mjs";
 import { initiateFile, signPart, listParts, completeFile, removeFile } from "./storage.js";
 import { sendTransferEmails, publicUrl } from "./email.js";
+import { recordEmployeeUpload } from "./employees.js";
 
 async function transferId(context) {
   const { id } = await context.params;
@@ -39,6 +40,7 @@ export const createTransfer = endpoint(async (request) => {
           VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`,
         [fileId, id, ordinal, file.name, file.size, file.type, `transfers/${id}/${fileId}`, input.partSize]);
       }
+      await recordEmployeeUpload(request, id, client);
       await client.query("COMMIT");
     } catch (error) {
       await client.query("ROLLBACK");

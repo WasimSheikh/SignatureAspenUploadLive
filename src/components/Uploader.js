@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { uploadParts } from "@/lib/upload-client.mjs";
 
 const STORAGE_KEY = "design-delivery-upload";
 const ALLOWED = /\.(psd|ai|pdf|zip|tiff?)$/i;
@@ -48,7 +49,7 @@ function putPart(url, blob, signal, progress) {
   });
 }
 
-export default function Uploader() {
+export default function Uploader({ employee = null, onComplete }) {
   const [files, setFiles] = useState([]);
   const [saved, setSaved] = useState(null);
   const [busy, setBusy] = useState(false);
@@ -131,46 +132,26 @@ export default function Uploader() {
       }
       const path = `/api/transfers/${session.id}`;
       const state = await api(`${path}/upload`, { token: session.uploadToken });
-      const total = files.reduce((sum, file) => sum + file.size, 0);
-      let done = state.files.reduce((sum, file) => sum + file.parts.reduce((bytes, part) => bytes + Math.min(file.partSize || state.partSize, file.size - (part.partNumber - 1) * (file.partSize || state.partSize)), 0), 0);
-      const started = Date.now();
-      const initial = done;
-      const update = (current = 0) => setProgress({ bytes: done + current, total, speed: (done + current - initial) / Math.max((Date.now() - started) / 1000, 1) });
-      update();
-      for (let index = 0; index < state.files.length; index++) {
-        const remote = state.files[index];
-        const local = files[index];
-        const partSize = remote.partSize || state.partSize || session.partSize;
-        const completed = new Set(remote.parts.map((part) => part.partNumber));
-        for (let part = 1; part <= Math.ceil(local.size / partSize); part++) {
-          if (completed.has(part)) continue;
-          const blob = local.slice((part - 1) * partSize, part * partSize);
-          for (let attempt = 0; ; attempt++) {
-            abort.signal.throwIfAborted();
-            try {
-              const { url } = await api(`${path}/parts`, {
-                token: session.uploadToken, method: "POST", signal: abort.signal,
-                body: JSON.stringify({ fileId: remote.id, partNumber: part }),
-              });
-              await putPart(url, blob, abort.signal, update);
-              break;
-            } catch (failure) {
-              if (abort.signal.aborted || attempt >= 4) throw failure;
-              setNotice(`Connection interrupted. Retrying chunk (${attempt + 1}/4)…`);
-              await new Promise((resolve) => setTimeout(resolve, Math.min(1000 * 2 ** attempt, 10000)));
-            }
-          }
-          done += blob.size;
-          update();
-          setNotice("");
-        }
-      }
+      await uploadParts({
+        files, remoteFiles: state.files, partSize: state.partSize || session.partSize,
+        signal: abort.signal, onProgress: setProgress,
+        onRetry: (attempt) => setNotice(`Connection interrupted. Retrying chunk (${attempt}/4)…`),
+        sign: async (fileId, partNumber, signal) => {
+          const result = await api(`${path}/parts`, {
+            token: session.uploadToken, method: "POST", signal,
+            body: JSON.stringify({ fileId, partNumber }),
+          });
+          return result.url;
+        },
+        send: putPart,
+      });
       abort.signal.throwIfAborted();
       setNotice("Verifying your files and sending notifications…");
       const result = await api(`${path}/complete`, { token: session.uploadToken, method: "POST", body: "{}" });
       setReceipt({ ...result, url: result.url || `${window.location.origin}/transfer/${session.id}` });
       remember(null);
       setNotice("");
+      onComplete?.();
     } catch (failure) {
       if (abort.signal.aborted) setNotice("Upload paused. Keep the files selected and choose Resume upload.");
       else {
@@ -218,7 +199,7 @@ export default function Uploader() {
   const percent = progress.total ? Math.min(100, progress.bytes / progress.total * 100) : 0;
   return (
     <form className="card" ref={form} onSubmit={upload}>
-      <div className="card-heading"><h2>Send your files</h2><span className="badge">No account needed</span></div>
+      <div className="card-heading"><h2>{employee ? "Quick upload" : "Send your files"}</h2><span className="badge">{employee ? "Employee workspace" : "No account needed"}</span></div>
       {saved && <p className="banner">An unfinished upload is saved on this browser. Reselect the original files to resume, or cancel it below.</p>}
       <label className={`dropzone ${dragging ? "dragging" : ""}`}
         onDragOver={(event) => { event.preventDefault(); setDragging(true); }}
@@ -234,9 +215,9 @@ export default function Uploader() {
       {files.length > 0 && <ul className="file-list">{files.map((file, index) => <li key={index}><span>{file.name}</span><small>{formatSize(file.size)}</small></li>)}</ul>}
       <fieldset disabled={busy || Boolean(saved)}>
         <div className="grid">
-          <label>Your email<input name="senderEmail" type="email" required maxLength={254} placeholder="you@studio.com" /></label>
+          <label>Your email<input name="senderEmail" type="email" required maxLength={254} placeholder="you@studio.com" defaultValue={employee?.email || ""} /></label>
           <label>Recipient emails<input name="recipientEmails" type="email" multiple required maxLength={2540} placeholder="team@company.com" /></label>
-          <label>Client / company<input name="company" required maxLength={200} placeholder="Signature Aspen" /></label>
+          <label>Client / company<input name="company" required maxLength={200} placeholder="Signature Aspen" defaultValue={employee ? "Signature Aspen" : ""} /></label>
           <label>Title / order ID<input name="title" required maxLength={200} placeholder="Spring campaign artwork" /></label>
         </div>
         <label>Message <span className="muted">(optional)</span><textarea name="message" rows={3} maxLength={2000} placeholder="Anything the team should know?" /></label>

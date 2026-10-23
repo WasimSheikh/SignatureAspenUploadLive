@@ -1,7 +1,7 @@
 import "./globals.css";
 
 export const metadata = {
-  title: "Design Delivery",
+  title: "Signature Aspen | Design File Delivery",
   description: "Share large design assets securely, without an account.",
   robots: { index: false, follow: false },
 };

@@ -1,5 +1,6 @@
 import Transfer from "@/components/Transfer";
 import { Suspense } from "react";
+import Brand from "@/components/Brand";
 
 async function TransferContent({ params }) {
   const { id } = await params;
@@ -9,7 +10,7 @@ async function TransferContent({ params }) {
 export default function TransferPage({ params }) {
   return (
     <main>
-      <header><a href="/" className="brand">Design Delivery<span>Large files. Simple delivery.</span></a></header>
+      <header><Brand /></header>
       <Suspense fallback={<section className="card" role="status">Loading transfer…</section>}>
         <TransferContent params={params} />
       </Suspense>

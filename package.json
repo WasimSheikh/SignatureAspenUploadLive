@@ -7,12 +7,15 @@
     "build": "next build",
     "start": "next start",
     "test": "node --test tests/*.test.mjs",
-    "db:setup": "node --env-file=.env.local --input-type=module -e \"import pg from 'pg'; import fs from 'node:fs'; const db = new pg.Client({connectionString:process.env.DATABASE_URL}); await db.connect(); try { await db.query(fs.readFileSync('db/schema.sql','utf8')); } finally { await db.end(); }\""
+    "db:setup": "node --env-file=.env.local --input-type=module -e \"import pg from 'pg'; import fs from 'node:fs'; const db = new pg.Client({connectionString:process.env.DATABASE_URL}); await db.connect(); try { for (const file of ['db/schema.sql','db/employee.sql','db/nas.sql']) await db.query(fs.readFileSync(file,'utf8')); } finally { await db.end(); }\"",
+    "nas:sync": "node --env-file=.env.local services/nas-worker.mjs",
+    "nas:serve": "node --env-file=.env.local services/nas-server.mjs"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "3.1156.0",
     "@aws-sdk/s3-request-presigner": "3.1156.0",
     "archiver": "8.0.0",
+    "jose": "6.2.13",
     "next": "16.4.3",
     "pg": "8.23.1",
     "react": "19.3.1",
