@@ -1,8 +1,8 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { mkdir, rm, readFile, symlink, stat, writeFile } from "node:fs/promises";
-import { resolve } from "node:path";
-import { randomBytes } from "node:crypto";
+import { mkdtemp, realpath, rm, readFile, symlink, stat, writeFile } from "node:fs/promises";
+import { join } from "node:path";
+import { tmpdir } from "node:os";
 import { Readable } from "node:stream";
 import { createServer } from "node:http";
 import { nasConfig, signNasToken, verifyNasToken, byteRange } from "../src/lib/nas-security.mjs";
@@ -39,8 +39,7 @@ test("NAS disabled by default and configured origins cannot redirect to arbitrar
 });
 
 test("NAS worker publishes only exact complete copies, removes expired copies and retries failures safely", async () => {
-  const root = resolve(`.next/cache/nas-tests/test-${randomBytes(8).toString("hex")}`);
-  await mkdir(root, { recursive: true });
+  const root = await realpath(await mkdtemp(join(tmpdir(), "designfiles-nas-")));
   const previous = { ...process.env };
   Object.assign(process.env, {
     DATABASE_URL: "postgres://unused/test", S3_BUCKET: "unused", AWS_REGION: "us-east-1",
@@ -132,10 +131,8 @@ test("single byte ranges support normal, open and suffix requests; malformed/mul
 });
 
 test("NAS copies stream atomically, validate exact bytes, reject symlinks and remove all transfer files", async () => {
-  const root = resolve(`.next/cache/nas-tests/test-${randomBytes(8).toString("hex")}`);
-  const outside = resolve(`.next/cache/nas-tests/outside-${randomBytes(8).toString("hex")}`);
-  await mkdir(root, { recursive: true });
-  await mkdir(outside, { recursive: true });
+  const root = await realpath(await mkdtemp(join(tmpdir(), "designfiles-nas-")));
+  const outside = await realpath(await mkdtemp(join(tmpdir(), "designfiles-nas-outside-")));
   const file = { id: fileId, size: 6 };
   try {
     await withNasDirectory(root, id, true, async (directory) => {
@@ -169,8 +166,7 @@ test("NAS copies stream atomically, validate exact bytes, reject symlinks and re
 });
 
 test("cloud employee issuance and local streaming enforce origin, session/ACL revocation, expiry and ranges", async () => {
-      const root = resolve(`.next/cache/nas-tests/test-${randomBytes(8).toString("hex")}`);
-      await mkdir(root, { recursive: true });
+      const root = await realpath(await mkdtemp(join(tmpdir(), "designfiles-nas-")));
       const uuid = "11111111-1111-4111-8111-111111111111";
       const previous = { ...process.env };
       Object.assign(process.env, {
