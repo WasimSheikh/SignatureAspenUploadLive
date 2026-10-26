@@ -7,6 +7,15 @@ const STORAGE_KEY = "design-delivery-upload";
 const ALLOWED = /\.(psd|ai|pdf|zip|tiff?)$/i;
 const MAX_BYTES = 20 * 1024 ** 3;
 
+// Update these with your real team members and their email addresses
+const CONTACTS = [
+  { id: "cs",     name: "Customer Service",           role: "",                email: "uploads@signatureaspen.com" },
+  { id: "dana",   name: "Dana Whitfield",             role: "Account Manager", email: "dwhitfield@signatureaspen.com" },
+  { id: "marcus", name: "Marcus Lee",                 role: "Account Manager", email: "mlee@signatureaspen.com" },
+  { id: "priya",  name: "Priya Shah",                 role: "Customer Service",email: "pshah@signatureaspen.com" },
+  { id: "tom",    name: "Tom Alvarez",                role: "Prepress",        email: "talvarez@signatureaspen.com" },
+];
+
 const formatSize = (bytes) => bytes < 1024 ** 2
   ? `${(bytes / 1024).toFixed(0)} KB`
   : `${(bytes / 1024 ** (bytes >= 1024 ** 3 ? 3 : 2)).toFixed(1)} ${bytes >= 1024 ** 3 ? "GB" : "MB"}`;
@@ -120,10 +129,19 @@ export default function Uploader({ employee = null, onComplete }) {
         throw new Error("To resume, reselect the same files in the same order, or cancel this transfer to start a new one.");
       }
       if (!session) {
+        const contact = CONTACTS.find((c) => c.id === fields.contact) || CONTACTS[0];
+        const messageParts = [];
+        if (fields.name) messageParts.push(`From: ${fields.name}`);
+        if (fields.phone) messageParts.push(`Phone: ${fields.phone}`);
+        if (fields.notes) messageParts.push(fields.notes);
         const created = await api("/api/transfers", {
           method: "POST",
           body: JSON.stringify({
-            ...fields,
+            senderEmail: fields.senderEmail,
+            recipientEmails: contact.email,
+            company: fields.company,
+            title: fields.jobNumber?.trim() || `File upload from ${fields.company || "client"}`,
+            message: messageParts.join("\n"),
             retentionDays: 30,
             passcode: "",
             files: files.map(({ name, size, type }) => ({ name, size, type })),
@@ -269,35 +287,53 @@ export default function Uploader({ employee = null, onComplete }) {
           </div>
 
           <div>
-            <h2 className="col-title">Transfer details</h2>
+            <h2 className="col-title">Your details</h2>
             <fieldset disabled={busy || Boolean(saved)}>
               <div className="row2">
                 <div className="field">
-                  <label>Your email<span className="req" aria-hidden="true">*</span>
-                    <input className="in" name="senderEmail" type="email" required maxLength={254} placeholder="you@studio.com" defaultValue={employee?.email || ""} />
+                  <label>Your name<span className="req" aria-hidden="true">*</span>
+                    <input className="in" name="name" type="text" required maxLength={200} autoComplete="name" placeholder="Jordan Ellis" defaultValue={employee?.name || ""} />
                   </label>
                 </div>
                 <div className="field">
-                  <label>Recipient email(s)<span className="req" aria-hidden="true">*</span>
-                    <input className="in" name="recipientEmails" type="email" multiple required maxLength={2540} placeholder="team@company.com" />
+                  <label>Email<span className="req" aria-hidden="true">*</span>
+                    <input className="in" name="senderEmail" type="email" required maxLength={254} autoComplete="email" placeholder="you@company.com" defaultValue={employee?.email || ""} />
                   </label>
                 </div>
               </div>
               <div className="row2">
                 <div className="field">
-                  <label>Client / company<span className="req" aria-hidden="true">*</span>
-                    <input className="in" name="company" required maxLength={200} placeholder="Signature Aspen" defaultValue={employee ? "Signature Aspen" : ""} />
+                  <label>Company<span className="req" aria-hidden="true">*</span>
+                    <input className="in" name="company" type="text" required maxLength={200} autoComplete="organization" placeholder="Bayou City Credit Union" />
                   </label>
                 </div>
                 <div className="field">
-                  <label>Project title<span className="req" aria-hidden="true">*</span>
-                    <input className="in" name="title" required maxLength={200} placeholder="Spring campaign artwork" />
+                  <label>Phone <span className="opt">(optional)</span>
+                    <input className="in" name="phone" type="tel" maxLength={30} autoComplete="tel" placeholder="713.555.0100" />
                   </label>
                 </div>
               </div>
               <div className="field">
-                <label>Message <span className="opt">(optional)</span>
-                  <textarea className="in" name="message" rows={3} maxLength={2000} placeholder="Anything recipients should know?" />
+                <label>Who at Aspen are you working with?<span className="req" aria-hidden="true">*</span>
+                  <select className="in" name="contact" required defaultValue="">
+                    <option value="" disabled>Choose your contact</option>
+                    {CONTACTS.map((c) => (
+                      <option key={c.id} value={c.id}>
+                        {c.id === "cs" ? "Not sure — send to Customer Service" : `${c.name}${c.role ? ` (${c.role})` : ""}`}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              </div>
+              <div className="field">
+                <label>Job or quote number <span className="opt">(optional)</span>
+                  <input className="in" name="jobNumber" type="text" maxLength={100} placeholder="130912 or Q-48817" />
+                </label>
+                <p className="help">Found on your quote or proof</p>
+              </div>
+              <div className="field">
+                <label>Notes for our team <span className="opt">(optional)</span>
+                  <textarea className="in" name="notes" rows={3} maxLength={2000} placeholder="Final art for the fall mailer. Reply card on its own page." />
                 </label>
               </div>
             </fieldset>
