@@ -68,6 +68,7 @@ export default function Uploader({ employee = null, onComplete }) {
   const [progress, setProgress] = useState({ bytes: 0, total: 0, speed: 0 });
   const [receipt, setReceipt] = useState(null);
   const [dragging, setDragging] = useState(false);
+  const [filesDone, setFilesDone] = useState(0);
   const controller = useRef(null);
   const form = useRef(null);
   const active = useRef(null);
@@ -128,6 +129,7 @@ export default function Uploader({ employee = null, onComplete }) {
     if (!files.length) { setError("Select the files you want to send."); return; }
     const fields = Object.fromEntries(new FormData(form.current));
     setBusy(true);
+    setFilesDone(0);
     setError("");
     setNotice("");
     const abort = new AbortController();
@@ -171,6 +173,9 @@ export default function Uploader({ employee = null, onComplete }) {
             token: session.uploadToken, method: "POST", signal,
             body: JSON.stringify({ fileId, partNumber }),
           });
+          const fileIndex = (session.files || files).findIndex((f) => (f.id || f.name) === fileId);
+          const totalParts = Math.ceil((session.files?.[fileIndex]?.size || files[fileIndex]?.size || 1) / (state.partSize || session.partSize || 1));
+          if (partNumber === totalParts) setFilesDone((n) => n + 1);
           return result.url;
         },
         send: putPart,
@@ -371,7 +376,13 @@ export default function Uploader({ employee = null, onComplete }) {
 
         <div className="qd-foot">
           <button type="submit" className="btn-primary" disabled={busy || !files.length}>
-            {busy ? "Uploading…" : saved ? "Resume upload" : "Send files"}
+            {busy
+              ? (files.length > 1 ? `Sending… ${filesDone} of ${files.length} done` : "Sending…")
+              : saved
+                ? "Resume upload"
+                : files.length > 0
+                  ? `Send ${files.length} file${files.length > 1 ? "s" : ""}`
+                  : "Send files"}
           </button>
           {busy && (
             <div style={{ display: "flex", gap: 10, justifyContent: "center", marginTop: 10 }}>
