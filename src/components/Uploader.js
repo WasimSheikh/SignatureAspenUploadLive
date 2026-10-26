@@ -93,13 +93,23 @@ export default function Uploader({ employee = null, onComplete }) {
   function chooseFiles(incoming) {
     if (busy) return;
     const selected = Array.from(incoming);
-    if (selected.some((file) => !ALLOWED.test(file.name) || file.size === 0)) {
-      setError("Choose non-empty PSD, AI, PDF, ZIP, TIF or TIFF files.");
+    const invalid = selected.filter((f) => !ALLOWED.test(f.name) || f.size === 0);
+    if (invalid.length) {
+      setError(`${invalid.map((f) => f.name).join(", ")} — only PSD, AI, PDF, ZIP, TIF or TIFF files are accepted.`);
       return;
     }
-    if (selected.length > 100) { setError("Please select at most 100 files."); return; }
-    setFiles(selected);
     setError("");
+    setFiles((prev) => {
+      const merged = [...prev];
+      let skipped = 0;
+      for (const file of selected) {
+        if (merged.some((f) => f.name === file.name && f.size === file.size)) { skipped++; continue; }
+        if (merged.length >= 100) { setError("You can add up to 100 files. Remove some to add more."); break; }
+        merged.push(file);
+      }
+      if (skipped && !merged.length) setError(`${skipped} file${skipped > 1 ? "s are" : " is"} already in your list.`);
+      return merged;
+    });
   }
 
   function remember(value) {
