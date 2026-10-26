@@ -120,8 +120,10 @@ export const authCallback = async (request) => {
     const exchange = await fetch(`${cfg.authority}/token`, {
       method: "POST", redirect: "error", signal: AbortSignal.timeout(15000),
       headers: { "Content-Type": "application/x-www-form-urlencoded" },
-      body: new URLSearchParams({ client_id: cfg.clientId, client_secret: cfg.clientSecret,
-        grant_type: "authorization_code", code, redirect_uri: cfg.callbackUrl, code_verifier: state.verifier }),
+      body: new URLSearchParams(Object.fromEntries(Object.entries({
+        client_id: cfg.clientId, client_secret: cfg.clientSecret || undefined,
+        grant_type: "authorization_code", code, redirect_uri: cfg.callbackUrl, code_verifier: state.verifier,
+      }).filter(([, v]) => v !== undefined))),
     });
     if (!exchange.ok) fail(401, "Sign-in could not be verified.");
     const token = await exchange.json();

@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Uploader from "./Uploader";
+import Brand from "./Brand";
 
 async function request(path, options) {
   const response = await fetch(path, { cache: "no-store", ...options });
@@ -55,13 +56,6 @@ function Dashboard({ employee }) {
       <div className="workspace-heading">
         <div><p className="eyebrow">SIGNATURE ASPEN WORKSPACE</p><h1>Welcome, {employee.name || "team"}.</h1>
           <p className="muted">{employee.admin ? "Company-wide transfer access" : "Your uploads and assigned transfers"}</p></div>
-        <form action="/api/auth/logout" method="post" onSubmit={(event) => {
-          event.preventDefault();
-          operate("logout", async () => {
-            await request("/api/auth/logout", { method: "POST" });
-            window.location.assign("/");
-          });
-        }}><button className="secondary" disabled={Boolean(action)}>Sign out</button></form>
       </div>
       <div className="tabs" aria-label="Workspace sections">
         <button className={tab === "files" ? "" : "secondary"} aria-pressed={tab === "files"} onClick={() => setTab("files")}>Files & transfers</button>
@@ -142,16 +136,25 @@ export default function Workspace() {
     if (new URLSearchParams(window.location.search).has("error")) setError("Company sign-in was not completed. Check your tenant/group access or contact your administrator.");
     return () => controller.abort();
   }, []);
-  if (session?.employee) return <Dashboard employee={session.employee} />;
+  if (session?.employee) return (
+    <>
+      <header className="slim-header">
+        <Brand />
+        <form action="/api/auth/logout" method="post" onSubmit={(event) => {
+          event.preventDefault();
+          request("/api/auth/logout", { method: "POST" }).then(() => window.location.assign("/")).catch(() => window.location.assign("/"));
+        }}><button className="secondary">Sign out</button></form>
+      </header>
+      <Dashboard employee={session.employee} />
+    </>
+  );
   return (
     <>
-      <section className="intro">
-        <p className="eyebrow">SIGNATURE ASPEN · CREATIVE DELIVERY</p>
-        <h1>Your vision.<br />Delivered simply.</h1>
-        <p>Send large design files securely, without an account.</p>
-        {session?.enabled && <a className="employee-login" href="/api/auth/login">Employee sign-in with Microsoft →</a>}
-        {error && <p className="error" role="alert">{error}</p>}
-      </section>
+      <header className="slim-header">
+        <Brand />
+        <a className="employee-login" href="/api/auth/login">Employee sign-in with Microsoft →</a>
+      </header>
+      {error && <p className="error" role="alert">{error}</p>}
       <Uploader />
     </>
   );

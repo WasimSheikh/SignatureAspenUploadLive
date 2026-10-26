@@ -9,7 +9,7 @@ export const STATE_COOKIE = "employee_oidc";
 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 export function employeeConfig(env = process.env) {
-  const required = ["ENTRA_TENANT_ID", "ENTRA_CLIENT_ID", "ENTRA_CLIENT_SECRET", "ENTRA_ALLOWED_GROUP_IDS"];
+  const required = ["ENTRA_TENANT_ID", "ENTRA_CLIENT_ID", "ENTRA_ALLOWED_GROUP_IDS"];
   if (required.some((name) => !env[name]?.trim())) return null;
   const groups = (value) => (value || "").split(",").map((id) => id.trim().toLowerCase()).filter(Boolean);
   const allowedGroups = groups(env.ENTRA_ALLOWED_GROUP_IDS);
@@ -27,7 +27,7 @@ export function employeeConfig(env = process.env) {
   }
   const tenant = env.ENTRA_TENANT_ID.toLowerCase();
   return {
-    tenant, clientId: env.ENTRA_CLIENT_ID.toLowerCase(), clientSecret: env.ENTRA_CLIENT_SECRET,
+    tenant, clientId: env.ENTRA_CLIENT_ID.toLowerCase(), clientSecret: env.ENTRA_CLIENT_SECRET?.trim() || "",
     allowedGroups, adminGroups, appUrl: url.origin, secret: env.COOKIE_SECRET,
     secure: env.NODE_ENV === "production" || url.protocol === "https:",
     issuer: `https://login.microsoftonline.com/${tenant}/v2.0`,

@@ -1,8 +1,12 @@
 :root { color-scheme: light; --ink: #242323; --muted: #6c6863; --accent: #33302c; --line: #dedbd6; }
 * { box-sizing: border-box; }
 body { margin: 0; background: #f5f3f0; color: var(--ink); font: 16px/1.55 Arial, Helvetica, sans-serif; }
-main { max-width: 1120px; margin: auto; padding: 32px 24px; }
-header { padding-bottom: 32px; border-bottom: 1px solid var(--line); }
+main { max-width: 1120px; margin: auto; padding: 0 24px 32px; }
+.slim-header { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 14px 0; border-bottom: 1px solid var(--line); margin-bottom: 0; }
+.slim-header .brand-logo { max-width: 160px; max-height: 52px; }
+.slim-header .brand-caption { display: none; }
+.slim-header .brand-fallback { font-size: 20px; letter-spacing: 2px; }
+.slim-header .brand-fallback span { font-size: 10px; letter-spacing: 5px; }
 a { color: var(--accent); }
 .brand { color: var(--ink); display: inline-flex; flex-direction: column; text-decoration: none; }
 .brand-logo { display: block; max-width: 240px; width: 100%; max-height: 85px; object-fit: contain; object-position: left; }
@@ -14,7 +18,7 @@ a { color: var(--accent); }
 h1 { font-size: clamp(32px, 5vw, 55px); line-height: 1.1; letter-spacing: -2px; margin: 18px 0; overflow-wrap: anywhere; }
 h2 { margin: 0; font-size: 23px; letter-spacing: -.6px; }
 .intro > p:last-child { color: var(--muted); }
-.card { max-width: 760px; margin: 32px auto; padding: 34px; background: #fff; border: 1px solid var(--line); border-radius: 18px; box-shadow: 0 12px 40px #203e3010; }
+.card { max-width: 760px; margin: 20px auto; padding: 34px; background: #fff; border: 1px solid var(--line); border-radius: 18px; box-shadow: 0 12px 40px #203e3010; }
 .card-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 24px; }
 .badge { background: #f0ede8; color: var(--accent); padding: 5px 10px; border-radius: 20px; font-size: 11px; white-space: nowrap; }
 .dropzone { border: 1.5px dashed #b1a79b; border-radius: 12px; background: #faf8f5; text-align: center; padding: 25px 14px; cursor: pointer; position: relative; overflow: hidden; }
@@ -79,8 +83,9 @@ dd { margin: 0; overflow-wrap: anywhere; }
 .assignment button { margin-bottom: 0; }
 .pagination { display: flex; justify-content: space-between; align-items: center; margin-top: 24px; font-size: 13px; }
 @media (max-width: 600px) {
-  main { padding: 20px 16px; }
-  .intro { margin-top: 36px; }
+  main { padding: 0 16px 24px; }
+  .slim-header { flex-wrap: wrap; gap: 10px; }
+  .slim-header .brand-logo { max-width: 130px; }
   .card { padding: 22px 18px; }
   .grid { grid-template-columns: 1fr; }
   .card-heading { flex-wrap: wrap; }
