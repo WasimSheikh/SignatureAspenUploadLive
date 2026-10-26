@@ -271,15 +271,17 @@ export default function Uploader({ employee = null, onComplete }) {
         </div>
 
         <div className="ok-actions">
-          <button className="btn-primary" onClick={() => {
-            setReceipt(null);
-            setFiles([]);
-            setProgress({ bytes: 0, total: 0, speed: 0 });
-            setFilesDone(0);
-            setNotice("");
-            setError("");
-            // keep saved null so a fresh upload starts
-          }}>Send more files for this job</button>
+          <div className="ok-actions-row">
+            <a className="btn-primary" href={receipt.url} target="_blank" rel="noreferrer">View transfer</a>
+            <button className="secondary" onClick={() => {
+              setReceipt(null);
+              setFiles([]);
+              setProgress({ bytes: 0, total: 0, speed: 0 });
+              setFilesDone(0);
+              setNotice("");
+              setError("");
+            }}>Send more files for this job</button>
+          </div>
           <button className="text-button" onClick={() => {
             setReceipt(null); setFiles([]); setNotice(""); setError("");
             setProgress({ bytes: 0, total: 0, speed: 0 }); setFilesDone(0);
