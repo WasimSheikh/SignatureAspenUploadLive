@@ -124,7 +124,8 @@ export default function Uploader({ employee = null, onComplete }) {
           method: "POST",
           body: JSON.stringify({
             ...fields,
-            retentionDays: Number(fields.retentionDays),
+            retentionDays: 30,
+            passcode: "",
             files: files.map(({ name, size, type }) => ({ name, size, type })),
           }),
         });
@@ -298,22 +299,6 @@ export default function Uploader({ employee = null, onComplete }) {
                 <label>Message <span className="opt">(optional)</span>
                   <textarea className="in" name="message" rows={3} maxLength={2000} placeholder="Anything recipients should know?" />
                 </label>
-              </div>
-              <div className="row2">
-                <div className="field">
-                  <label>Link expires after
-                    <select className="in" name="retentionDays" defaultValue="7">
-                      <option value="7">7 days</option>
-                      <option value="14">14 days</option>
-                      <option value="30">30 days</option>
-                    </select>
-                  </label>
-                </div>
-                <div className="field">
-                  <label>Passcode <span className="opt">(optional, 8+ chars)</span>
-                    <input className="in" name="passcode" type="password" minLength={8} maxLength={128} autoComplete="new-password" />
-                  </label>
-                </div>
               </div>
             </fieldset>
           </div>
