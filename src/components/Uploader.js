@@ -135,13 +135,13 @@ export default function Uploader({ employee = null, onComplete }) {
     const abort = new AbortController();
     controller.current = abort;
     try {
+      const contact = CONTACTS.find((c) => c.id === fields.contact) || CONTACTS[0];
       const fingerprints = await Promise.all(files.map(fingerprint));
       let session = active.current;
       if (session && JSON.stringify(session.fingerprints) !== JSON.stringify(fingerprints)) {
         throw new Error("To resume, reselect the same files in the same order, or cancel this transfer to start a new one.");
       }
       if (!session) {
-        const contact = CONTACTS.find((c) => c.id === fields.contact) || CONTACTS[0];
         const messageParts = [];
         if (fields.name) messageParts.push(`From: ${fields.name}`);
         if (fields.phone) messageParts.push(`Phone: ${fields.phone}`);
