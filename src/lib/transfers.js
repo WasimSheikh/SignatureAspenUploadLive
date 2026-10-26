@@ -48,8 +48,14 @@ export const createTransfer = endpoint(async (request) => {
     }
     const files = await getFiles(client, id);
     try {
+      // Initiate all Azure staging blobs in parallel; save IDs to DB sequentially.
+      const results = await Promise.allSettled(files.map((file) => initiateFile(file)));
+      for (const [i, result] of results.entries()) {
+        if (result.status === "fulfilled") files[i].upload_id = result.value;
+      }
+      const failed = results.find((r) => r.status === "rejected");
+      if (failed) throw failed.reason;
       for (const file of files) {
-        file.upload_id = await initiateFile(file);
         await client.query("UPDATE transfer_files SET upload_id = $2 WHERE id = $1", [file.id, file.upload_id]);
       }
     } catch (error) {
@@ -106,7 +112,6 @@ export const uploadStatus = endpoint(async (request, context) => {
 export const completeTransfer = endpoint(async (request, context) => {
   requireOrigin(request);
   const id = await transferId(context);
-  await readJson(request);
   return withTransferLock(id, async (client) => {
     let transfer = await getTransfer(client, id);
     requireUploadToken(request, transfer);

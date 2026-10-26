@@ -12,7 +12,7 @@ let remoteKeys;
 export function employeeDatabase() {
   if (!pool) {
     if (!process.env.DATABASE_URL) throw new Error("Employee database is not configured");
-    pool = new pg.Pool({ connectionString: process.env.DATABASE_URL, max: 5,
+    pool = new pg.Pool({ connectionString: process.env.DATABASE_URL, max: Number(process.env.DATABASE_POOL_MAX || 5),
       connectionTimeoutMillis: 10000, idleTimeoutMillis: 30000 });
     pool.on("error", () => console.error("Employee database connection error."));
   }

@@ -1,12 +1,14 @@
 import { createHash, createHmac, randomUUID } from "node:crypto";
-import { config } from "./config.js";
+import { config, isLocalMode } from "./config.js";
 import { storage, container, blobSas } from "./azure.js";
 import { expectedPartSize, validateParts, fail } from "./security.mjs";
+import * as local from "./local-storage.js";
 
 export { storage };
 const PREFIX = "azure-v1:";
 const missing = (error) => error?.statusCode === 404 || ["BlobNotFound", "ContainerNotFound"].includes(error?.code);
 export function requireAzure(file) {
+  if (isLocalMode()) { local.requireLocal(file); return; }
   if (!file.upload_id?.startsWith(PREFIX) || !/^[0-9a-f-]{36}$/.test(file.upload_id.slice(PREFIX.length))) {
     fail(409, "Legacy storage transfer is incompatible. Drain or migrate existing transfers before switching to Azure.");
   }
@@ -20,7 +22,7 @@ export function blockId(file, number) {
   return Buffer.from(`${file.upload_id.slice(PREFIX.length)}:${String(number).padStart(6, "0")}`).toString("base64");
 }
 function leaseId(file) {
-  const hex = createHmac("sha256", config().cookieSecret).update(file.upload_id).digest("hex").slice(0, 32);
+  const hex = createHmac("sha256", config().cookieSecret).update("blob-lease-v1:").update(file.upload_id).digest("hex").slice(0, 32);
   return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
 }
 const blob = (file) => { requireAzure(file); return container().getBlockBlobClient(file.object_key); };
@@ -30,6 +32,7 @@ function expiry(transfer, seconds) {
   return new Date(end);
 }
 export async function initiateFile(file) {
+  if (isLocalMode()) return local.initiateFile(file);
   const uploadId = `${PREFIX}${randomUUID()}`;
   const staged = container().getBlockBlobClient(stagingKey({ ...file, upload_id: uploadId }));
   // A committed empty blob allows an exclusive lease before inspecting uncommitted blocks.
@@ -51,9 +54,11 @@ function normalizeParts(file, result) {
   return [...blocks.values()].sort((a, b) => a.PartNumber - b.PartNumber);
 }
 export async function listParts(file) {
+  if (isLocalMode()) return local.listParts(file);
   return normalizeParts(file, await container().getBlockBlobClient(stagingKey(file)).getBlockList("all"));
 }
 export async function signPart(transfer, file, partNumber) {
+  if (isLocalMode()) return local.signPart(transfer, file, partNumber);
   requireAzure(file);
   if (file.completed) fail(409, "File is not accepting upload parts.");
   expectedPartSize(Number(file.size), Number(file.part_size), partNumber);
@@ -72,6 +77,7 @@ function valid(file, object) {
     object.metadata?.upload_id === file.upload_id;
 }
 export async function completeFile(file, onValidated) {
+  if (isLocalMode()) return local.completeFile(file, onValidated);
   const final = blob(file);
   const existing = await properties(final);
   if (existing) {
@@ -166,6 +172,7 @@ async function deleteBlob(client, conditions) {
 }
 export async function removeFile(file) {
   if (!file.upload_id) return;
+  if (isLocalMode()) return local.removeFile(file);
   await deleteBlob(blob(file));
   const staged = container().getBlockBlobClient(stagingKey(file));
   const current = await properties(staged);
@@ -182,6 +189,7 @@ export async function signDownload(transfer, file) {
   });
 }
 export async function objectStream(file, signal) {
+  if (isLocalMode()) return local.objectStream(file, signal);
   const result = await blob(file).download(0, undefined, { abortSignal: signal });
   if (!result.readableStreamBody) throw new Error("Storage returned an empty response");
   return result.readableStreamBody;
@@ -190,6 +198,7 @@ export async function objectStream(file, signal) {
 // The browser's still-valid write SAS can recreate staging after cancellation.
 // Enumerate only staging; final live objects must never be inferred from a prefix scan.
 export async function cleanupStaging(lookup, limit = 500) {
+  if (isLocalMode()) return local.cleanupStaging(lookup, limit);
   let cleaned = 0;
   const pages = container().listBlobsFlat({ prefix: "staging/", includeUncommitedBlobs: true })
     .byPage({ maxPageSize: 500 });

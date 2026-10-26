@@ -1,4 +1,9 @@
 import { createHash, createHmac, randomBytes, scrypt as scryptCallback, timingSafeEqual } from "node:crypto";
+
+// Derive a domain-specific key so COOKIE_SECRET is never used raw across multiple HMAC roles.
+function domainKey(secret, label) {
+  return createHash("sha256").update(label).update(":").update(secret).digest();
+}
 import { promisify } from "node:util";
 
 const scrypt = promisify(scryptCallback);
@@ -124,7 +129,7 @@ export async function verifyPasscode(passcode, stored) {
 
 export function signUnlock(id, secret, expiry = Date.now() + 60 * 60 * 1000) {
   const payload = `${id}.${expiry}`;
-  return `${payload}.${createHmac("sha256", secret).update(payload).digest("base64url")}`;
+  return `${payload}.${createHmac("sha256", domainKey(secret, "transfer-unlock-v1")).update(payload).digest("base64url")}`;
 }
 
 export function verifyUnlock(value, id, secret, now = Date.now()) {
@@ -132,7 +137,7 @@ export function verifyUnlock(value, id, secret, now = Date.now()) {
   const [cookieId, expiry, signature, extra] = value.split(".");
   if (extra || cookieId !== id || !/^\d+$/.test(expiry) || Number(expiry) <= now ||
       Number(expiry) > now + 60 * 60 * 1000 + 5000) return false;
-  const expected = createHmac("sha256", secret).update(`${cookieId}.${expiry}`).digest("base64url");
+  const expected = createHmac("sha256", domainKey(secret, "transfer-unlock-v1")).update(`${cookieId}.${expiry}`).digest("base64url");
   return equalSecret(signature, expected);
 }
 

@@ -1,0 +1,41 @@
+name: Deploy to Azure App Service
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build
+        run: npm run build
+        env:
+          # Dummy values so config() passes during build (no real connections made)
+          APP_URL: https://signaturefileupload-c3gna0hwffapbfc0.westus3-01.azurewebsites.net
+          DATABASE_URL: postgresql://placeholder@localhost/placeholder
+          AZURE_STORAGE_ACCOUNT_NAME: sigaspenfiles
+          AZURE_STORAGE_CONTAINER: design-transfers
+          RESEND_API_KEY: build-placeholder
+          FROM_EMAIL: build@placeholder.com
+          COOKIE_SECRET: ${{ secrets.COOKIE_SECRET }}
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+
+      - name: Deploy to Azure Web App
+        uses: azure/webapps-deploy@v3
+        with:
+          app-name: signaturefileupload
+          publish-profile: ${{ secrets.AZURE_WEBAPP_PUBLISH_PROFILE }}
+          package: .
