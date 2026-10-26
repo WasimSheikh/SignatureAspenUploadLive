@@ -125,12 +125,20 @@ export const authCallback = async (request) => {
         grant_type: "authorization_code", code, redirect_uri: cfg.callbackUrl, code_verifier: state.verifier,
       }).filter(([, v]) => v !== undefined))),
     });
-    if (!exchange.ok) fail(401, "Sign-in could not be verified.");
+    if (!exchange.ok) {
+      const errBody = await exchange.json().catch(() => ({}));
+      console.error("Token exchange failed.", { status: exchange.status, error: errBody.error, description: errBody.error_description?.slice(0, 200) });
+      fail(401, "Sign-in could not be verified.");
+    }
     const token = await exchange.json();
     if (typeof token.id_token !== "string" || token.id_token.length > 32768) fail(401, "Sign-in could not be verified.");
     remoteKeys ||= createRemoteJWKSet(new URL(`https://login.microsoftonline.com/${cfg.tenant}/discovery/v2.0/keys`));
     let verified;
-    try { verified = await verifyEmployeeToken(token.id_token, remoteKeys, cfg, state.nonce); } catch {
+    try { verified = await verifyEmployeeToken(token.id_token, remoteKeys, cfg, state.nonce); } catch (err) {
+      const preview = JSON.parse(Buffer.from(token.id_token.split(".")[1], "base64url").toString()).ver;
+      console.error("Employee token verification failed.", { message: err?.message?.slice(0, 200), tokenVer: preview });
+      const claims = JSON.parse(Buffer.from(token.id_token.split(".")[1], "base64url").toString());
+      console.error("Token claims present:", Object.keys(claims).join(", "));
       fail(403, "Employee identity or group membership was not accepted.");
     }
     const opaque = randomBytes(32).toString("base64url");

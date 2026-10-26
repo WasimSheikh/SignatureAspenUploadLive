@@ -152,7 +152,13 @@ export default function Workspace() {
     <>
       <header className="slim-header">
         <Brand />
-        <a className="employee-login" href="/api/auth/login">Employee sign-in with Microsoft →</a>
+        <nav className="site-nav" aria-label="Site">
+          <a href="https://signatureaspen.com/services">Services</a>
+          <a href="https://signatureaspen.com/quote">Request a Quote</a>
+          <a href="/" className="on" aria-current="page">Upload Art</a>
+          <a href="https://signatureaspen.com/contact">Contact Us</a>
+        </nav>
+        <a className="employee-login" href="/api/auth/login">Employee sign-in →</a>
       </header>
       {error && <p className="error" role="alert">{error}</p>}
       <Uploader />

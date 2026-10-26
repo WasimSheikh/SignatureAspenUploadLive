@@ -5,7 +5,30 @@ import { putPart, uploadParts } from "@/lib/upload-client.mjs";
 
 const STORAGE_KEY = "design-delivery-upload";
 const ALLOWED = /\.(psd|ai|pdf|zip|tiff?)$/i;
-const formatSize = (bytes) => `${(bytes / 1024 ** (bytes >= 1024 ** 3 ? 3 : 2)).toFixed(1)} ${bytes >= 1024 ** 3 ? "GB" : "MB"}`;
+const MAX_BYTES = 20 * 1024 ** 3;
+
+const formatSize = (bytes) => bytes < 1024 ** 2
+  ? `${(bytes / 1024).toFixed(0)} KB`
+  : `${(bytes / 1024 ** (bytes >= 1024 ** 3 ? 3 : 2)).toFixed(1)} ${bytes >= 1024 ** 3 ? "GB" : "MB"}`;
+
+const formatEta = (bytes, total, speed) => {
+  if (!speed || bytes >= total) return null;
+  const secs = Math.ceil((total - bytes) / speed);
+  if (secs < 60) return `${secs}s left`;
+  if (secs < 3600) return `${Math.ceil(secs / 60)}m left`;
+  return `${(secs / 3600).toFixed(1)}h left`;
+};
+
+function extOf(name) { const i = name.lastIndexOf("."); return i > 0 ? name.slice(i + 1).toLowerCase() : ""; }
+function badgeLabel(name) { const e = extOf(name); return e ? e.toUpperCase().slice(0, 4) : "FILE"; }
+function badgeClass(name) {
+  const e = extOf(name);
+  if (e === "pdf") return "b-pdf";
+  if (["zip", "7z", "rar"].includes(e)) return "b-zip";
+  if (["ai", "eps", "psd", "indd"].includes(e)) return "b-art";
+  if (["jpg", "jpeg", "png", "tif", "tiff", "gif"].includes(e)) return "b-img";
+  return "b-other";
+}
 
 async function api(path, { token, ...options } = {}) {
   const response = await fetch(path, {
@@ -158,64 +181,207 @@ export default function Uploader({ employee = null, onComplete }) {
   }
 
   if (receipt) return (
-    <section className="card receipt">
-      <div className="success-icon" aria-hidden="true">✓</div>
-      <h2>Your files are ready.</h2>
-      <p>Anyone with this link can access the transfer{receipt.requiresPasscode ? " using your passcode" : ""}. Share it only with your intended recipients.</p>
-      <label>Private download link<input readOnly value={receipt.url} onFocus={(event) => event.target.select()} /></label>
-      <button onClick={async () => {
-        try { await navigator.clipboard.writeText(receipt.url); setNotice("Link copied."); }
-        catch { setNotice("Select and copy the link above."); }
-      }}>Copy link</button>
-      <a className="button secondary" href={receipt.url}>View transfer</a>
-      <p role="status">{notice}</p>
-      <p className="muted">{receipt.emailStatus === "sent" ? "Confirmation emails sent." : "Files are ready. If notifications are delayed, share the link directly."}</p>
-      <button className="text-button" onClick={() => { setReceipt(null); setFiles([]); setNotice(""); }}>Send another transfer</button>
+    <section className="card ok-card">
+      <div className="ok-mark" aria-hidden="true">✓</div>
+      <h2>Files received. Thank you.</h2>
+      <p className="ok-sub">A confirmation is on its way to <strong>{receipt.requiresPasscode ? "your recipients" : "everyone on the transfer"}</strong>.</p>
+      <label style={{ display: "block", marginBottom: 16 }}>
+        Private download link
+        <input readOnly value={receipt.url} onFocus={(e) => e.target.select()}
+          style={{ display: "block", width: "100%", marginTop: 6, padding: "10px 12px", border: "1px solid #BFCAD8", borderRadius: 8, fontSize: 14, fontFamily: "inherit" }} />
+      </label>
+      <div className="ok-actions">
+        <button className="btn-primary" onClick={async () => {
+          try { await navigator.clipboard.writeText(receipt.url); setNotice("Link copied."); }
+          catch { setNotice("Select and copy the link above."); }
+        }}>Copy link</button>
+        <a className="button secondary" href={receipt.url} style={{ marginTop: 4 }}>View transfer</a>
+      </div>
+      {notice && <p role="status" style={{ fontSize: 13, color: "var(--muted)", marginTop: 12, textAlign: "center" }}>{notice}</p>}
+      <p style={{ fontSize: 13, color: "var(--muted)", marginTop: 16 }}>{receipt.emailStatus === "sent" ? "Confirmation emails sent." : "Files are ready. If notifications are delayed, share the link directly."}</p>
+      <button className="text-button" style={{ marginTop: 12, display: "block", marginInline: "auto" }} onClick={() => { setReceipt(null); setFiles([]); setNotice(""); }}>Send another transfer</button>
     </section>
   );
 
   const percent = progress.total ? Math.min(100, progress.bytes / progress.total * 100) : 0;
+  const totalBytes = files.reduce((s, f) => s + f.size, 0);
+  const meterPct = Math.min(100, (totalBytes / MAX_BYTES) * 100);
+
   return (
-    <form className="card" ref={form} onSubmit={upload}>
-      <div className="card-heading"><h2>{employee ? "Quick upload" : "Send your files"}</h2><span className="badge">{employee ? "Employee workspace" : "No account needed"}</span></div>
-      {saved && <p className="banner">An unfinished upload is saved on this browser. Reselect the original files to resume, or cancel it below.</p>}
-      <label className={`dropzone ${dragging ? "dragging" : ""}`}
-        onDragOver={(event) => { event.preventDefault(); setDragging(true); }}
-        onDragLeave={() => setDragging(false)}
-        onDrop={(event) => { event.preventDefault(); setDragging(false); chooseFiles(event.dataTransfer.files); }}>
-        <span className="upload-icon" aria-hidden="true">↑</span>
-        <strong>Drop your design files here</strong>
-        <span>or click to browse · PSD, AI, PDF, ZIP, TIF</span>
-        <small>5 GB+ supported · Default transfer limit: 20 GiB</small>
-        <input aria-label="Choose design files" type="file" multiple accept=".psd,.ai,.pdf,.zip,.tif,.tiff" disabled={busy}
-          onChange={(event) => chooseFiles(event.target.files)} />
-      </label>
-      {files.length > 0 && <ul className="file-list">{files.map((file, index) => <li key={index}><span>{file.name}</span><small>{formatSize(file.size)}</small></li>)}</ul>}
-      <fieldset disabled={busy || Boolean(saved)}>
-        <div className="grid">
-          <label>Your email<input name="senderEmail" type="email" required maxLength={254} placeholder="you@studio.com" defaultValue={employee?.email || ""} /></label>
-          <label>Recipient emails<input name="recipientEmails" type="email" multiple required maxLength={2540} placeholder="team@company.com" /></label>
-          <label>Client / company<input name="company" required maxLength={200} placeholder="Signature Aspen" defaultValue={employee ? "Signature Aspen" : ""} /></label>
-          <label>Title / order ID<input name="title" required maxLength={200} placeholder="Spring campaign artwork" /></label>
+    <>
+      <section className="hero">
+        <div className="hero-wrap">
+          <h1>Send your design files</h1>
+          <p>Drop your artwork here and it goes straight to your Aspen contact. Recipients get a private link and confirmation right away.</p>
         </div>
-        <label>Message <span className="muted">(optional)</span><textarea name="message" rows={3} maxLength={2000} placeholder="Anything the team should know?" /></label>
-        <div className="grid">
-          <label>Link expires after<select name="retentionDays" defaultValue="7"><option value="7">7 days</option><option value="14">14 days</option><option value="30">30 days</option></select></label>
-          <label>Passcode <span className="muted">(optional, 8+ characters)</span><input name="passcode" type="password" minLength={8} maxLength={128} autoComplete="new-password" /></label>
+      </section>
+
+      <form className="card" ref={form} onSubmit={upload}>
+        {saved && <p className="banner">An unfinished upload is saved on this browser. Reselect the original files to resume, or cancel it below.</p>}
+        <div className="qd-grid">
+          <div>
+            <h2 className="col-title">Your files</h2>
+            <label className={`dz ${dragging ? "dragging" : ""} ${busy ? "locked-dz" : ""}`}
+              onDragOver={(e) => { e.preventDefault(); setDragging(true); }}
+              onDragLeave={() => setDragging(false)}
+              onDrop={(e) => { e.preventDefault(); setDragging(false); chooseFiles(e.dataTransfer.files); }}>
+              <span className="dz-icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24" width="28" height="28" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M12 16V4"/><path d="M7 9l5-5 5 5"/><path d="M4 16v3a1 1 0 001 1h14a1 1 0 001-1v-3"/>
+                </svg>
+              </span>
+              <strong>Drag files here or <span className="dz-browse">browse</span></strong>
+              <span>or click to browse · PSD, AI, PDF, ZIP, TIF</span>
+              <span style={{ fontSize: 12, marginTop: 4 }}>Up to 100 files · 20 GiB total</span>
+              <input aria-label="Choose design files" type="file" multiple accept=".psd,.ai,.pdf,.zip,.tif,.tiff" disabled={busy}
+                onChange={(e) => chooseFiles(e.target.files)} />
+            </label>
+
+            {files.length > 0 && (
+              <>
+                <div className="flist-head">
+                  <span>Your files ({files.length})</span>
+                  <button type="button" className="flist-clear" onClick={() => !busy && setFiles([])}>Clear all</button>
+                </div>
+                <ul className="flist">
+                  {files.map((file, idx) => (
+                    <li key={idx} className="frow">
+                      <span className={`badge ${badgeClass(file.name)}`}>{badgeLabel(file.name)}</span>
+                      <span className="fname">{file.name}</span>
+                      <span className="fsize">{formatSize(file.size)}</span>
+                      <button type="button" className="fremove" aria-label={`Remove ${file.name}`}
+                        onClick={() => !busy && setFiles((prev) => prev.filter((_, i) => i !== idx))}>×</button>
+                    </li>
+                  ))}
+                </ul>
+                <div className={`meter ${meterPct >= 90 ? "near" : ""}`}>
+                  <div className="meter-top">
+                    <strong>{formatSize(totalBytes)} of 20 GiB</strong>
+                    <span>{files.length} of 100 files</span>
+                  </div>
+                  <div className="meter-bar">
+                    <span className="meter-fill" style={{ width: (totalBytes > 0 ? Math.max(meterPct, 0.5) : 0) + "%" }} />
+                  </div>
+                </div>
+              </>
+            )}
+          </div>
+
+          <div>
+            <h2 className="col-title">Transfer details</h2>
+            <fieldset disabled={busy || Boolean(saved)}>
+              <div className="row2">
+                <div className="field">
+                  <label>Your email<span className="req" aria-hidden="true">*</span>
+                    <input className="in" name="senderEmail" type="email" required maxLength={254} placeholder="you@studio.com" defaultValue={employee?.email || ""} />
+                  </label>
+                </div>
+                <div className="field">
+                  <label>Recipient email(s)<span className="req" aria-hidden="true">*</span>
+                    <input className="in" name="recipientEmails" type="email" multiple required maxLength={2540} placeholder="team@company.com" />
+                  </label>
+                </div>
+              </div>
+              <div className="row2">
+                <div className="field">
+                  <label>Client / company<span className="req" aria-hidden="true">*</span>
+                    <input className="in" name="company" required maxLength={200} placeholder="Signature Aspen" defaultValue={employee ? "Signature Aspen" : ""} />
+                  </label>
+                </div>
+                <div className="field">
+                  <label>Project title<span className="req" aria-hidden="true">*</span>
+                    <input className="in" name="title" required maxLength={200} placeholder="Spring campaign artwork" />
+                  </label>
+                </div>
+              </div>
+              <div className="field">
+                <label>Message <span className="opt">(optional)</span>
+                  <textarea className="in" name="message" rows={3} maxLength={2000} placeholder="Anything recipients should know?" />
+                </label>
+              </div>
+              <div className="row2">
+                <div className="field">
+                  <label>Link expires after
+                    <select className="in" name="retentionDays" defaultValue="7">
+                      <option value="7">7 days</option>
+                      <option value="14">14 days</option>
+                      <option value="30">30 days</option>
+                    </select>
+                  </label>
+                </div>
+                <div className="field">
+                  <label>Passcode <span className="opt">(optional, 8+ chars)</span>
+                    <input className="in" name="passcode" type="password" minLength={8} maxLength={128} autoComplete="new-password" />
+                  </label>
+                </div>
+              </div>
+            </fieldset>
+          </div>
         </div>
-      </fieldset>
-      {progress.total > 0 && <div className="progress-area" aria-live="polite">
-        <div><strong>{percent.toFixed(1)}%</strong><span>{formatSize(progress.bytes)} / {formatSize(progress.total)} · {formatSize(progress.speed)}/s</span></div>
-        <progress value={progress.bytes} max={progress.total} aria-label="Upload progress" />
-      </div>}
-      {error && <p className="error" role="alert">{error}</p>}
-      {notice && <p className="banner" role="status">{notice}</p>}
-      <div className="actions">
-        <button type="submit" disabled={busy || !files.length}>{busy ? "Uploading…" : saved ? "Resume upload" : "Upload & create link"}</button>
-        {busy && <button type="button" className="secondary" onClick={() => controller.current?.abort()}>Pause</button>}
-        {saved && !busy && <button type="button" className="secondary" onClick={cancel}>Cancel transfer</button>}
-      </div>
-      <p className="muted fine-print">Keep this tab open during upload. Interrupted uploads can be resumed on this browser by reselecting the same files. Passcodes must be shared separately.</p>
-    </form>
+
+        {progress.total > 0 && (
+          <div className="progress-area" aria-live="polite">
+            <div className="progress-header">
+              <span className="progress-pct">{percent.toFixed(0)}%</span>
+              <span className="progress-eta">{formatEta(progress.bytes, progress.total, progress.speed)}</span>
+            </div>
+            <div className="progress-track">
+              <div className="progress-fill" style={{ width: `${percent}%` }} />
+            </div>
+            <div className="progress-stats">
+              <span>{formatSize(progress.bytes)} of {formatSize(progress.total)}</span>
+              <span>{formatSize(progress.speed)}/s</span>
+            </div>
+          </div>
+        )}
+
+        {error && <p className="error" role="alert">{error}</p>}
+        {notice && <p className="banner" role="status">{notice}</p>}
+
+        <div className="qd-foot">
+          <button type="submit" className="btn-primary" disabled={busy || !files.length}>
+            {busy ? "Uploading…" : saved ? "Resume upload" : "Send files"}
+          </button>
+          {busy && (
+            <div style={{ display: "flex", gap: 10, justifyContent: "center", marginTop: 10 }}>
+              <button type="button" className="secondary" onClick={() => controller.current?.abort()}>Pause</button>
+            </div>
+          )}
+          {saved && !busy && (
+            <div style={{ display: "flex", gap: 10, justifyContent: "center", marginTop: 10 }}>
+              <button type="button" className="secondary" onClick={cancel}>Cancel transfer</button>
+            </div>
+          )}
+          <p className="send-hint" style={{ marginTop: 12 }}>Keep this tab open during upload. Interrupted uploads can be resumed.</p>
+        </div>
+      </form>
+
+      <section className="tips" aria-label="Tips for sending files">
+        <div className="tip">
+          <span className="tip-ico">
+            <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+              <path d="M14 3H7a2 2 0 00-2 2v14a2 2 0 002 2h10a2 2 0 002-2V8z"/><path d="M14 3v5h5"/>
+            </svg>
+          </span>
+          <div><h3>PDFs print best</h3><p>Send a high-res PDF with 0.125 in bleed when possible.</p></div>
+        </div>
+        <div className="tip">
+          <span className="tip-ico">
+            <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+              <path d="M21 8l-9-5-9 5v8l9 5 9-5z"/><path d="M3 8l9 5 9-5M12 13v8"/>
+            </svg>
+          </span>
+          <div><h3>Sending InDesign or Illustrator?</h3><p>Package it with fonts and links, then zip the folder.</p></div>
+        </div>
+        <div className="tip">
+          <span className="tip-ico">
+            <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+              <path d="M22 16.92v3a2 2 0 01-2.18 2 19.79 19.79 0 01-8.63-3.07A19.5 19.5 0 013 6.18a2 2 0 012-2.18h3a2 2 0 012 1.72c.13.96.37 1.9.7 2.81a2 2 0 01-.45 2.11L9.09 11.91a16 16 0 005 5l1.27-1.27a2 2 0 012.11-.45c.91.33 1.85.57 2.81.7A2 2 0 0122 16.92z"/>
+            </svg>
+          </span>
+          <div><h3>Bigger than 20 GiB?</h3><p>Call 713.830.9500 and we will send you a special link.</p></div>
+        </div>
+      </section>
+    </>
   );
 }
