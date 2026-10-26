@@ -183,7 +183,23 @@ export default function Uploader({ employee = null, onComplete }) {
       abort.signal.throwIfAborted();
       setNotice("Verifying your files and sending notifications…");
       const result = await api(`${path}/complete`, { token: session.uploadToken, method: "POST", body: "{}" });
-      setReceipt({ ...result, url: result.url || `${window.location.origin}/transfer/${session.id}` });
+      const transferId = session.id;
+      const now = new Date();
+      const dateStr = `${String(now.getFullYear()).slice(2)}${String(now.getMonth()+1).padStart(2,"0")}${String(now.getDate()).padStart(2,"0")}`;
+      const receiptNum = `SA-${dateStr}-${transferId.slice(-4).toUpperCase()}`;
+      const whenStr = now.toLocaleString("en-US", { weekday:"short", month:"short", day:"numeric", year:"numeric", hour:"numeric", minute:"2-digit" });
+      setReceipt({
+        ...result,
+        url: result.url || `${window.location.origin}/transfer/${transferId}`,
+        senderName: fields.name || "",
+        senderEmail: fields.senderEmail || "",
+        contactName: contact.name,
+        jobNumber: fields.jobNumber?.trim() || "",
+        uploadedFiles: files.map((f) => ({ name: f.name, size: f.size })),
+        totalSize: files.reduce((s, f) => s + f.size, 0),
+        receiptNum,
+        whenStr,
+      });
       remember(null);
       setNotice("");
       onComplete?.();
@@ -214,28 +230,66 @@ export default function Uploader({ employee = null, onComplete }) {
     finally { setBusy(false); }
   }
 
-  if (receipt) return (
-    <section className="card ok-card">
-      <div className="ok-mark" aria-hidden="true">✓</div>
-      <h2>Files received. Thank you.</h2>
-      <p className="ok-sub">A confirmation is on its way to <strong>{receipt.requiresPasscode ? "your recipients" : "everyone on the transfer"}</strong>.</p>
-      <label style={{ display: "block", marginBottom: 16 }}>
-        Private download link
-        <input readOnly value={receipt.url} onFocus={(e) => e.target.select()}
-          style={{ display: "block", width: "100%", marginTop: 6, padding: "10px 12px", border: "1px solid #BFCAD8", borderRadius: 8, fontSize: 14, fontFamily: "inherit" }} />
-      </label>
-      <div className="ok-actions">
-        <button className="btn-primary" onClick={async () => {
-          try { await navigator.clipboard.writeText(receipt.url); setNotice("Link copied."); }
-          catch { setNotice("Select and copy the link above."); }
-        }}>Copy link</button>
-        <a className="button secondary" href={receipt.url} style={{ marginTop: 4 }}>View transfer</a>
-      </div>
-      {notice && <p role="status" style={{ fontSize: 13, color: "var(--muted)", marginTop: 12, textAlign: "center" }}>{notice}</p>}
-      <p style={{ fontSize: 13, color: "var(--muted)", marginTop: 16 }}>{receipt.emailStatus === "sent" ? "Confirmation emails sent." : "Files are ready. If notifications are delayed, share the link directly."}</p>
-      <button className="text-button" style={{ marginTop: 12, display: "block", marginInline: "auto" }} onClick={() => { setReceipt(null); setFiles([]); setNotice(""); }}>Send another transfer</button>
-    </section>
-  );
+  if (receipt) {
+    const firstName = (receipt.senderName || "").trim().split(/\s+/)[0] || "there";
+    const n = receipt.uploadedFiles?.length || 0;
+    const totalFmt = receipt.totalSize ? formatSize(receipt.totalSize) : "";
+    return (
+      <section className="card ok-card">
+        <div className="ok-mark" aria-hidden="true">✓</div>
+        <h2>Got them. Thanks, {firstName}.</h2>
+        <p className="ok-sub">
+          {n} {n === 1 ? "file" : "files"}{totalFmt ? ` (${totalFmt})` : ""} {n === 1 ? "is" : "are"} with {receipt.contactName}.
+        </p>
+
+        <div className="receipt-badge">
+          <span>Receipt <strong>{receipt.receiptNum}</strong></span>
+          <span>{receipt.whenStr}</span>
+        </div>
+
+        {receipt.uploadedFiles?.length > 0 && (
+          <div className="ok-files">
+            <ul className="flist">
+              {receipt.uploadedFiles.map((f, i) => (
+                <li key={i} className="frow" style={{ gridTemplateColumns: "auto 1fr auto" }}>
+                  <span className={`badge ${badgeClass(f.name)}`}>{badgeLabel(f.name)}</span>
+                  <span className="fname">{f.name}</span>
+                  <span className="fsize">{formatSize(f.size)}</span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+
+        <p className="ok-line">A confirmation is on its way to <strong>{receipt.senderEmail}</strong>.</p>
+
+        <div className="callout">
+          <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" style={{ flexShrink: 0, marginTop: 1 }}>
+            <circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 8h.01"/>
+          </svg>
+          <p>No need to send these again. If you need to add or replace a file for this job, use the button below.</p>
+        </div>
+
+        <div className="ok-actions">
+          <button className="btn-primary" onClick={() => {
+            setReceipt(null);
+            setFiles([]);
+            setProgress({ bytes: 0, total: 0, speed: 0 });
+            setFilesDone(0);
+            setNotice("");
+            setError("");
+            // keep saved null so a fresh upload starts
+          }}>Send more files for this job</button>
+          <button className="text-button" onClick={() => {
+            setReceipt(null); setFiles([]); setNotice(""); setError("");
+            setProgress({ bytes: 0, total: 0, speed: 0 }); setFilesDone(0);
+          }}>Start over</button>
+        </div>
+
+        {notice && <p role="status" style={{ fontSize: 13, color: "var(--muted)", marginTop: 12, textAlign: "center" }}>{notice}</p>}
+      </section>
+    );
+  }
 
   const percent = progress.total ? Math.min(100, progress.bytes / progress.total * 100) : 0;
   const totalBytes = files.reduce((s, f) => s + f.size, 0);
