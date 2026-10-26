@@ -31,8 +31,7 @@ jobs:
           DATABASE_URL: postgresql://placeholder@localhost/placeholder
           AZURE_STORAGE_ACCOUNT_NAME: sigaspenfiles
           AZURE_STORAGE_CONTAINER: design-transfers
-          RESEND_API_KEY: build-placeholder
-          FROM_EMAIL: build@placeholder.com
+          GRAPH_SENDER_EMAIL: noreply@signatureaspen.com
           COOKIE_SECRET: build-placeholder-not-used-at-build-time
           CRON_SECRET: build-placeholder-not-used-at-build-time
 

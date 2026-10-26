@@ -15,7 +15,7 @@ export function config() {
     if (!process.env[name]) throw new Error(`Missing configuration: ${name}`);
   }
   if (!local) {
-    for (const name of ["AZURE_STORAGE_ACCOUNT_NAME", "AZURE_STORAGE_CONTAINER", "RESEND_API_KEY", "FROM_EMAIL"]) {
+    for (const name of ["AZURE_STORAGE_ACCOUNT_NAME", "AZURE_STORAGE_CONTAINER", "GRAPH_SENDER_EMAIL"]) {
       if (!process.env[name]) throw new Error(`Missing configuration: ${name}`);
     }
     if (!/^[a-z0-9]{3,24}$/.test(process.env.AZURE_STORAGE_ACCOUNT_NAME)) throw new Error("Invalid Azure storage account name");
