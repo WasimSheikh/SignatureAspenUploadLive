@@ -272,8 +272,8 @@ export default function Uploader({ employee = null, onComplete }) {
 
         <div className="ok-actions">
           <div className="ok-actions-row">
-            <a className="btn-primary" href={receipt.url} target="_blank" rel="noreferrer">View transfer</a>
-            <button className="secondary" onClick={() => {
+            <a className="button btn-primary" href={receipt.url} target="_blank" rel="noreferrer">View transfer</a>
+            <button className="button secondary" onClick={() => {
               setReceipt(null);
               setFiles([]);
               setProgress({ bytes: 0, total: 0, speed: 0 });

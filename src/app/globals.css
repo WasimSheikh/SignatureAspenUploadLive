@@ -134,7 +134,8 @@ fieldset:disabled { opacity: .65; }
 /* ── Buttons ──────────────────────────── */
 button, .button { font: inherit; font-weight: 600; font-size: 16px; border-radius: 10px; padding: 13px 22px; border: 1px solid transparent; cursor: pointer; display: inline-flex; align-items: center; justify-content: center; gap: 8px; text-decoration: none; line-height: 1.2; transition: background .15s, border-color .15s, opacity .15s; }
 button:focus-visible, a:focus-visible { outline: 3px solid rgba(14,55,96,.4); outline-offset: 2px; }
-.btn-primary { background: var(--green); color: var(--navy); border-color: transparent; width: 100%; font-size: 17px; padding: 16px 24px; }
+.btn-primary { background: var(--green); color: var(--navy); border-color: transparent; font-size: 17px; padding: 16px 24px; }
+.qd-foot .btn-primary { width: 100%; }
 .btn-primary:hover:not(:disabled) { background: #6BB23B; }
 .btn-primary:disabled { background: #DDE3EA; color: #8A96A5; cursor: not-allowed; }
 .secondary { background: var(--white); color: var(--navy); border-color: #B3C0D1; }
