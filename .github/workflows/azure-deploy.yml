@@ -33,8 +33,8 @@ jobs:
           AZURE_STORAGE_CONTAINER: design-transfers
           RESEND_API_KEY: build-placeholder
           FROM_EMAIL: build@placeholder.com
-          COOKIE_SECRET: ${{ secrets.COOKIE_SECRET }}
-          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+          COOKIE_SECRET: build-placeholder-not-used-at-build-time
+          CRON_SECRET: build-placeholder-not-used-at-build-time
 
       - name: Azure login (OIDC)
         uses: azure/login@v2
