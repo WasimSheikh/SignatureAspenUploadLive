@@ -24,17 +24,6 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Build
-        run: npm run build
-        env:
-          APP_URL: https://signaturefileupload-c3gna0hwffapbfc0.westus3-01.azurewebsites.net
-          DATABASE_URL: postgresql://placeholder@localhost/placeholder
-          AZURE_STORAGE_ACCOUNT_NAME: sigaspenfiles
-          AZURE_STORAGE_CONTAINER: design-transfers
-          GRAPH_SENDER_EMAIL: noreply@signatureaspen.com
-          COOKIE_SECRET: build-placeholder-not-used-at-build-time
-          CRON_SECRET: build-placeholder-not-used-at-build-time
-
       - name: Azure login (OIDC)
         uses: azure/login@v2
         with:
