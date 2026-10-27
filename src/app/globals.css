@@ -57,8 +57,8 @@ main { max-width: 1120px; margin: 0 auto; padding: 0 16px 48px; }
 @media (max-width: 759px) { .hero { padding: 32px 0 36px; } .hero-wrap { padding: 0 16px; } .hero p { font-size: 15px; } }
 
 /* ── Site nav ─────────────────────────── */
-.site-nav { display: flex; gap: 2px 20px; flex-wrap: wrap; }
-.site-nav a { color: var(--muted); text-decoration: none; font-size: 14px; font-weight: 500; padding: 6px 0; border-bottom: 2px solid transparent; white-space: nowrap; }
+.site-nav { display: flex; gap: 2px 32px; flex-wrap: wrap; }
+.site-nav a { color: var(--muted); text-decoration: none; font-size: 11px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; padding: 6px 0; border-bottom: 2px solid transparent; white-space: nowrap; transition: color .12s; }
 .site-nav a:hover { color: var(--navy); }
 .site-nav a.on { color: var(--navy); border-bottom-color: var(--green); }
 @media (max-width: 900px) { .site-nav { display: none; } }
