@@ -15,20 +15,26 @@ export const POST = employeeEndpoint(async (request) => {
 
   const expiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString();
 
-  await sendUploadRequest({
-    contact: {
-      id: contactId || "other",
-      name: contactName || employee.name || "Aspen Team",
-      role: contactRole || "Account Manager",
-      email: contactEmail,
-    },
-    customer: {
-      email: customerEmail,
-      name: customerName || "",
-      firstName: (customerName || "").trim().split(/\s+/)[0] || "",
-    },
-    job: { number: jobNumber || "", title: jobTitle, company: company || "", message: message || "", expiresAt },
-  });
+  let emailSent = true;
+  try {
+    await sendUploadRequest({
+      contact: {
+        id: contactId || "other",
+        name: contactName || employee.name || "Aspen Team",
+        role: contactRole || "Account Manager",
+        email: contactEmail,
+      },
+      customer: {
+        email: customerEmail,
+        name: customerName || "",
+        firstName: (customerName || "").trim().split(/\s+/)[0] || "",
+      },
+      job: { number: jobNumber || "", title: jobTitle, company: company || "", message: message || "", expiresAt },
+    });
+  } catch {
+    emailSent = false;
+    console.error("Upload request email failed — email service may not be configured locally.");
+  }
 
-  return json({ sent: true });
+  return json({ sent: true, emailSent });
 });

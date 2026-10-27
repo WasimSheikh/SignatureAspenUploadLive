@@ -254,10 +254,15 @@ export default function Workspace() {
     <>
       <header className="slim-header">
         <Brand />
-        <form action="/api/auth/logout" method="post" onSubmit={(event) => {
-          event.preventDefault();
-          request("/api/auth/logout", { method: "POST" }).then(() => window.location.assign("/")).catch(() => window.location.assign("/"));
-        }}><button className="secondary">Sign out</button></form>
+        <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
+          <span style={{ fontSize: 13, color: "var(--muted)", fontWeight: 500 }}>
+            {session.employee.name || session.employee.email}
+          </span>
+          <form action="/api/auth/logout" method="post" onSubmit={(event) => {
+            event.preventDefault();
+            request("/api/auth/logout", { method: "POST" }).then(() => window.location.assign("/")).catch(() => window.location.assign("/"));
+          }}><button className="secondary" style={{ padding: "7px 14px", fontSize: 13 }}>Sign out</button></form>
+        </div>
       </header>
       <Dashboard employee={session.employee} />
     </>
