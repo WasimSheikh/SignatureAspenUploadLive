@@ -328,3 +328,28 @@ dd { margin: 0; overflow-wrap: anywhere; }
   .assignment label { flex-basis: 100%; }
   .file-actions { flex-direction: column; gap: 4px; }
 }
+
+/* ── Status update page ───────────────── */
+.status-kicker { font-size: 12px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: var(--green); margin-bottom: 6px; }
+.status-page { max-width: 860px; margin-left: auto; margin-right: auto; }
+.status-page > p { margin-bottom: 18px; }
+.status-page h2 { font-size: 22px; margin: 28px 0 10px; }
+.status-links { list-style: none; margin: 0 0 16px; padding: 0; border: 1px solid var(--line); border-radius: 10px; overflow: hidden; }
+.status-links li { display: flex; justify-content: space-between; gap: 16px; padding: 12px 14px; border-top: 1px solid var(--line); font-size: 14px; }
+.status-links li:first-child { border-top: 0; }
+.status-links span { color: var(--muted); font-weight: 600; }
+.status-links a { font-weight: 600; text-decoration: none; overflow-wrap: anywhere; }
+.status-links a:hover { color: var(--green-700); }
+.status-feature { margin-top: 28px; padding-top: 22px; border-top: 1px solid var(--line); }
+.status-feature h2 span { color: var(--muted); }
+.status-feature p, .status-feature li { margin-bottom: 10px; }
+.status-feature ul { margin: 0 0 12px; padding-left: 20px; }
+.status-open { font-weight: 600; }
+.status-open a { text-decoration: none; }
+.status-open a:hover { color: var(--green-700); }
+.status-feature figure { margin: 14px 0 0; }
+.status-feature img { display: block; width: 100%; border: 1px solid var(--line); border-radius: 10px; background: #FAFBFD; }
+.status-path { font-family: ui-monospace, SFMono-Regular, Consolas, monospace; font-size: 14px; background: #FAFBFD; border: 1px solid var(--line); border-radius: 10px; padding: 12px 14px; color: var(--navy); overflow-wrap: anywhere; }
+@media (max-width: 600px) {
+  .status-links li { flex-direction: column; gap: 4px; }
+}
