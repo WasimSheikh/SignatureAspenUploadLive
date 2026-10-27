@@ -6,7 +6,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  id-token: write   # required for OIDC login
+  id-token: write
   contents: read
 
 jobs:
@@ -24,6 +24,26 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Build (standalone)
+        run: npm run build
+        env:
+          NODE_ENV: production
+          APP_URL: https://signaturefileupload-c3gna0hwffapbfc0.westus3-01.azurewebsites.net
+          DATABASE_URL: postgresql://placeholder@localhost/placeholder
+          AZURE_STORAGE_ACCOUNT_NAME: sigaspenfiles
+          AZURE_STORAGE_CONTAINER: design-transfers
+          GRAPH_SENDER_EMAIL: noreply@signatureaspen.com
+          ENTRA_TENANT_ID: e64b8cad-d81e-461f-9e6f-2539d215e7ba
+          ENTRA_CLIENT_ID: e912adb2-b374-406f-9b35-d705f7518363
+          ENTRA_ALLOWED_GROUP_IDS: 9dfeb2e9-e804-4a2f-81e7-f865bdc74bb1
+          COOKIE_SECRET: ${{ secrets.COOKIE_SECRET }}
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+
+      - name: Bundle standalone for deployment
+        run: |
+          cp -r .next/static .next/standalone/.next/static
+          cp -r public .next/standalone/public 2>/dev/null || true
+
       - name: Azure login (OIDC)
         uses: azure/login@v2
         with:
@@ -31,9 +51,9 @@ jobs:
           tenant-id: ${{ secrets.AZURE_TENANT_ID }}
           subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
 
-      - name: Deploy to Azure Web App
+      - name: Deploy standalone to Azure Web App
         uses: azure/webapps-deploy@v3
         with:
           app-name: signaturefileupload
           resource-group-name: signaturefileupload_group
-          package: .
+          package: .next/standalone
