@@ -7,13 +7,17 @@ const STORAGE_KEY = "design-delivery-upload";
 const ALLOWED = /\.(psd|ai|pdf|zip|tiff?)$/i;
 const MAX_BYTES = 20 * 1024 ** 3;
 
-// Update with your real team — name shown in picker, email used for routing and Reply-To
 const CONTACTS = [
-  { id: "cs",     name: "Not sure",      label: "Not sure — send to Customer Service", role: "", email: "uploads@signatureaspen.com" },
-  { id: "wasim",  name: "Wasim Sheikh",  role: "Account Manager", email: "wasim@aspenimg.com" },
-  { id: "marcus", name: "Marcus Lee",    role: "Account Manager", email: "mlee@signatureaspen.com" },
-  { id: "priya",  name: "Priya Shah",    role: "Customer Service",email: "pshah@signatureaspen.com" },
-  { id: "tom",    name: "Tom Alvarez",   role: "Prepress",        email: "talvarez@signatureaspen.com" },
+  { id: "lmelchor",  name: "Louis Melchor",   role: "Account Manager", email: "lmelchor@signatureaspen.com" },
+  { id: "jturner",   name: "Jeff Turner",      role: "Account Manager", email: "jturner@signatureaspen.com" },
+  { id: "jseiford",  name: "Jimmy Seiford",    role: "Account Manager", email: "jseiford@signatureaspen.com" },
+  { id: "ccarroll",  name: "Colton Carroll",   role: "Account Manager", email: "ccarroll@signatureaspen.com" },
+  { id: "gemmott",   name: "Gary Emmott",      role: "Account Manager", email: "gemmott@signatureaspen.com" },
+  { id: "akliafas",  name: "Alex Kliafas",     role: "Account Manager", email: "akliafas@signatureaspen.com" },
+  { id: "msimpson",  name: "Mike Simpson",     role: "Account Manager", email: "msimpson@signatureaspen.com" },
+  { id: "jleon",     name: "Joel Leon",        role: "Account Manager", email: "JLeon@signatureaspen.com" },
+  { id: "kdasilva",  name: "Kris Da Silva",    role: "Account Manager", email: "kdasilva@signatureaspen.com" },
+  { id: "other",     name: "Other",            label: "Other — I'll type their name below", role: "", email: "uploads@signatureaspen.com" },
 ];
 
 const formatSize = (bytes) => bytes < 1024 ** 2
@@ -69,6 +73,7 @@ export default function Uploader({ employee = null, onComplete }) {
   const [receipt, setReceipt] = useState(null);
   const [dragging, setDragging] = useState(false);
   const [filesDone, setFilesDone] = useState(0);
+  const [otherContact, setOtherContact] = useState(false);
   const controller = useRef(null);
   const form = useRef(null);
   const active = useRef(null);
@@ -135,7 +140,10 @@ export default function Uploader({ employee = null, onComplete }) {
     const abort = new AbortController();
     controller.current = abort;
     try {
-      const contact = CONTACTS.find((c) => c.id === fields.contact) || CONTACTS[0];
+      const contactBase = CONTACTS.find((c) => c.id === fields.contact) || CONTACTS[0];
+      const contact = fields.contact === "other"
+        ? { ...contactBase, name: fields.otherContactName || "Other" }
+        : contactBase;
       const fingerprints = await Promise.all(files.map(fingerprint));
       let session = active.current;
       if (session && JSON.stringify(session.fingerprints) !== JSON.stringify(fingerprints)) {
@@ -386,7 +394,8 @@ export default function Uploader({ employee = null, onComplete }) {
               </div>
               <div className="field">
                 <label>Who at Aspen are you working with?<span className="req" aria-hidden="true">*</span>
-                  <select className="in" name="contact" required defaultValue="">
+                  <select className="in" name="contact" required defaultValue=""
+                    onChange={(e) => setOtherContact(e.target.value === "other")}>
                     <option value="" disabled>Choose your contact</option>
                     {CONTACTS.map((c) => (
                       <option key={c.id} value={c.id}>
@@ -396,6 +405,14 @@ export default function Uploader({ employee = null, onComplete }) {
                   </select>
                 </label>
               </div>
+              {otherContact && (
+                <div className="field">
+                  <label>Their name<span className="req" aria-hidden="true">*</span>
+                    <input className="in" name="otherContactName" type="text" required maxLength={100}
+                      placeholder="e.g. Sarah Jones" />
+                  </label>
+                </div>
+              )}
               <div className="field">
                 <label>Job or quote number <span className="opt">(optional)</span>
                   <input className="in" name="jobNumber" type="text" maxLength={100} placeholder="130912 or Q-48817" />
