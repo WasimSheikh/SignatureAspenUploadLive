@@ -74,6 +74,7 @@ export default function Uploader({ employee = null, onComplete }) {
   const [dragging, setDragging] = useState(false);
   const [filesDone, setFilesDone] = useState(0);
   const [otherContact, setOtherContact] = useState(false);
+  const [urlPrefill, setUrlPrefill] = useState({});
   const controller = useRef(null);
   const form = useRef(null);
   const active = useRef(null);
@@ -86,6 +87,14 @@ export default function Uploader({ employee = null, onComplete }) {
         active.current = stored;
       }
     } catch { /* Storage may be unavailable in private browsing. */ }
+    try {
+      const params = new URLSearchParams(window.location.search);
+      const prefill = {};
+      if (params.get("contact")) prefill.contact = params.get("contact");
+      if (params.get("job")) prefill.jobNumber = params.get("job");
+      if (params.get("company")) prefill.company = params.get("company");
+      if (Object.keys(prefill).length) setUrlPrefill(prefill);
+    } catch { /* ignore */ }
     return () => controller.current?.abort();
   }, []);
 
@@ -383,7 +392,7 @@ export default function Uploader({ employee = null, onComplete }) {
               <div className="row2">
                 <div className="field">
                   <label>Company<span className="req" aria-hidden="true">*</span>
-                    <input className="in" name="company" type="text" required maxLength={200} autoComplete="organization" placeholder="Bayou City Credit Union" />
+                    <input className="in" name="company" type="text" required maxLength={200} autoComplete="organization" placeholder="Bayou City Credit Union" defaultValue={urlPrefill.company || ""} />
                   </label>
                 </div>
                 <div className="field">
@@ -394,7 +403,7 @@ export default function Uploader({ employee = null, onComplete }) {
               </div>
               <div className="field">
                 <label>Who at Aspen are you working with?<span className="req" aria-hidden="true">*</span>
-                  <select className="in" name="contact" required defaultValue=""
+                  <select className="in" name="contact" required defaultValue={urlPrefill.contact || ""}
                     onChange={(e) => setOtherContact(e.target.value === "other")}>
                     <option value="" disabled>Choose your contact</option>
                     {CONTACTS.map((c) => (
@@ -415,7 +424,7 @@ export default function Uploader({ employee = null, onComplete }) {
               )}
               <div className="field">
                 <label>Job or quote number <span className="opt">(optional)</span>
-                  <input className="in" name="jobNumber" type="text" maxLength={100} placeholder="130912 or Q-48817" />
+                  <input className="in" name="jobNumber" type="text" maxLength={100} placeholder="130912 or Q-48817" defaultValue={urlPrefill.jobNumber || ""} />
                 </label>
                 <p className="help">Found on your quote or proof</p>
               </div>

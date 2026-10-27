@@ -42,6 +42,8 @@ export function config() {
     fromEmail: process.env.FROM_EMAIL || "",
     internalEmails: (process.env.INTERNAL_NOTIFICATION_EMAILS || "").split(",").map((email) => email.trim().toLowerCase()).filter(Boolean),
     reminders: process.env.ENABLE_EXPIRATION_REMINDERS === "true",
+    csLeadEmail: process.env.CS_LEAD_EMAIL?.trim() || "",
+    summaryEmails: (process.env.SUMMARY_EMAILS || "").split(",").map((e) => e.trim().toLowerCase()).filter(Boolean),
     maxBytes: integer("MAX_TRANSFER_BYTES", 20 * 1024 ** 3, 5 * 1024 ** 4),
     maxFiles: integer("MAX_TRANSFER_FILES", 100, 1000),
     maxRecipients: integer("MAX_TRANSFER_RECIPIENTS", 20, 50),

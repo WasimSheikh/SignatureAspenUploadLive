@@ -78,6 +78,11 @@ export const cleanupTransfers = endpoint(async (request) => {
     }
   }
   try {
+    const { sendUnopenedAlerts } = await import("./email.js");
+    const alertsSent = await sendUnopenedAlerts(db());
+    if (alertsSent > 0) counts.emailed = (counts.emailed || 0) + alertsSent;
+  } catch { counts.failed++; console.error("Unopened alert check failed."); }
+  try {
     await cleanupStaging(async (transferId, fileId, uploadId) => {
       const result = await db().query(`SELECT 1 FROM transfers t JOIN transfer_files f ON f.transfer_id = t.id
         WHERE t.id = $1 AND f.id = $2 AND f.upload_id = $3 AND t.expires_at > now()

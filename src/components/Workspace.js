@@ -14,6 +14,19 @@ async function request(path, options) {
 const size = (bytes) => bytes >= 1024 ** 3 ? `${(bytes / 1024 ** 3).toFixed(2)} GiB` : `${(bytes / 1024 ** 2).toFixed(1)} MiB`;
 const nasLabels = { syncing: "Syncing to NAS", available: "Available locally", failed: "NAS sync failed", pending: "Waiting for NAS" };
 
+// Contact list mirrored here for the request-files modal
+const CONTACTS_FOR_REQUEST = [
+  { id: "lmelchor", name: "Louis Melchor",  role: "Account Manager", email: "lmelchor@signatureaspen.com" },
+  { id: "jturner",  name: "Jeff Turner",    role: "Account Manager", email: "jturner@signatureaspen.com" },
+  { id: "jseiford", name: "Jimmy Seiford",  role: "Account Manager", email: "jseiford@signatureaspen.com" },
+  { id: "ccarroll", name: "Colton Carroll", role: "Account Manager", email: "ccarroll@signatureaspen.com" },
+  { id: "gemmott",  name: "Gary Emmott",    role: "Account Manager", email: "gemmott@signatureaspen.com" },
+  { id: "akliafas", name: "Alex Kliafas",   role: "Account Manager", email: "akliafas@signatureaspen.com" },
+  { id: "msimpson", name: "Mike Simpson",   role: "Account Manager", email: "msimpson@signatureaspen.com" },
+  { id: "jleon",    name: "Joel Leon",      role: "Account Manager", email: "JLeon@signatureaspen.com" },
+  { id: "kdasilva", name: "Kris Da Silva",  role: "Account Manager", email: "kdasilva@signatureaspen.com" },
+];
+
 function Dashboard({ employee }) {
   const [tab, setTab] = useState("files");
   const [query, setQuery] = useState("");
@@ -24,6 +37,10 @@ function Dashboard({ employee }) {
   const [loading, setLoading] = useState(true);
   const [revision, setRevision] = useState(0);
   const [action, setAction] = useState("");
+  const [reqModal, setReqModal] = useState(false);
+  const [reqSending, setReqSending] = useState(false);
+  const [reqSuccess, setReqSuccess] = useState(false);
+  const [reqError, setReqError] = useState("");
 
   useEffect(() => {
     const controller = new AbortController();
@@ -57,10 +74,107 @@ function Dashboard({ employee }) {
         <div><p className="eyebrow">SIGNATURE ASPEN WORKSPACE</p><h1>Welcome, {employee.name || "team"}.</h1>
           <p className="muted">{employee.admin ? "Company-wide transfer access" : "Your uploads and assigned transfers"}</p></div>
       </div>
-      <div className="tabs" aria-label="Workspace sections">
-        <button className={tab === "files" ? "" : "secondary"} aria-pressed={tab === "files"} onClick={() => setTab("files")}>Files & transfers</button>
-        <button className={tab === "upload" ? "" : "secondary"} aria-pressed={tab === "upload"} onClick={() => setTab("upload")}>Quick upload</button>
+      <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+        <div className="tabs" aria-label="Workspace sections" style={{ flex: 1 }}>
+          <button className={tab === "files" ? "" : "secondary"} aria-pressed={tab === "files"} onClick={() => setTab("files")}>Files & transfers</button>
+          <button className={tab === "upload" ? "" : "secondary"} aria-pressed={tab === "upload"} onClick={() => setTab("upload")}>Quick upload</button>
+        </div>
+        <button className="secondary" style={{ fontSize: 13, padding: "7px 14px", whiteSpace: "nowrap" }}
+          onClick={() => { setReqModal(true); setReqSuccess(false); setReqError(""); }}>
+          Request files from customer
+        </button>
       </div>
+
+      {reqModal && (
+        <div style={{ position: "fixed", inset: 0, background: "rgba(10,40,71,.45)", zIndex: 200, display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }}
+          onClick={(e) => { if (e.target === e.currentTarget) setReqModal(false); }}>
+          <div className="card" style={{ width: "100%", maxWidth: 520, maxHeight: "90vh", overflowY: "auto", margin: 0 }}>
+            <div className="card-heading">
+              <h2>Request files from customer</h2>
+              <button className="secondary" style={{ fontSize: 13, padding: "4px 10px" }} onClick={() => setReqModal(false)}>✕</button>
+            </div>
+            {reqSuccess ? (
+              <div>
+                <p style={{ color: "var(--green-700)", marginBottom: 16 }}>✓ Upload request sent successfully.</p>
+                <button className="secondary" onClick={() => { setReqModal(false); setReqSuccess(false); }}>Close</button>
+              </div>
+            ) : (
+              <form onSubmit={async (e) => {
+                e.preventDefault();
+                setReqSending(true); setReqError("");
+                const f = Object.fromEntries(new FormData(e.currentTarget));
+                const contact = CONTACTS_FOR_REQUEST.find((c) => c.id === f.contactId);
+                try {
+                  const resp = await request("/api/employee/request-files", {
+                    method: "POST", headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({
+                      customerEmail: f.customerEmail, customerName: f.customerName,
+                      company: f.company, jobNumber: f.jobNumber, jobTitle: f.jobTitle,
+                      message: f.message,
+                      contactId: contact?.id, contactName: contact?.name,
+                      contactRole: contact?.role, contactEmail: contact?.email,
+                    }),
+                  });
+                  setReqSuccess(true);
+                } catch (err) { setReqError(err.message); }
+                finally { setReqSending(false); }
+              }}>
+                <div className="row2">
+                  <div className="field">
+                    <label>Customer name
+                      <input className="in" name="customerName" type="text" placeholder="Jordan Ellis" maxLength={200} />
+                    </label>
+                  </div>
+                  <div className="field">
+                    <label>Customer email<span className="req">*</span>
+                      <input className="in" name="customerEmail" type="email" required maxLength={254} placeholder="jordan@company.com" />
+                    </label>
+                  </div>
+                </div>
+                <div className="row2">
+                  <div className="field">
+                    <label>Company
+                      <input className="in" name="company" type="text" maxLength={200} placeholder="Bayou City Credit Union" />
+                    </label>
+                  </div>
+                  <div className="field">
+                    <label>Job or quote number
+                      <input className="in" name="jobNumber" type="text" maxLength={100} placeholder="130912" />
+                    </label>
+                  </div>
+                </div>
+                <div className="field">
+                  <label>Job title<span className="req">*</span>
+                    <input className="in" name="jobTitle" type="text" required maxLength={200} placeholder="Fall Member Mailer" />
+                  </label>
+                </div>
+                <div className="field">
+                  <label>Aspen contact<span className="req">*</span>
+                    <select className="in" name="contactId" required defaultValue="">
+                      <option value="" disabled>Choose contact</option>
+                      {CONTACTS_FOR_REQUEST.map((c) => (
+                        <option key={c.id} value={c.id}>{c.name} — {c.role}</option>
+                      ))}
+                    </select>
+                  </label>
+                </div>
+                <div className="field">
+                  <label>Message to customer <span className="opt">(optional)</span>
+                    <textarea className="in" name="message" rows={3} maxLength={1000} placeholder="Please send the print-ready PDFs for your fall mailer." />
+                  </label>
+                </div>
+                {reqError && <p className="error" style={{ marginBottom: 12 }}>{reqError}</p>}
+                <div className="actions">
+                  <button type="submit" className="btn-primary" disabled={reqSending}>
+                    {reqSending ? "Sending…" : "Send upload request"}
+                  </button>
+                  <button type="button" className="secondary" onClick={() => setReqModal(false)}>Cancel</button>
+                </div>
+              </form>
+            )}
+          </div>
+        </div>
+      )}
       <div hidden={tab !== "upload"}>
         <Uploader employee={employee} onComplete={() => setRevision((value) => value + 1)} />
       </div>
