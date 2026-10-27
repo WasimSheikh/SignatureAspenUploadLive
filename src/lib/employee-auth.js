@@ -55,7 +55,7 @@ export async function readEmployeeSession(request, client, cfg = employeeConfig(
   const session = rows[0];
   if (!session) return null;
   let groups;
-  try { groups = approvedGroups(session.group_ids, cfg); } catch (error) {
+  try { groups = approvedGroups(Array.isArray(session.group_ids) ? session.group_ids : [], cfg); } catch (error) {
     if (error instanceof HttpError) return null;
     throw error;
   }
@@ -92,7 +92,7 @@ export const authLogin = employeeEndpoint(async () => {
   const url = new URL(`${cfg.authority}/authorize`);
   url.search = new URLSearchParams({
     client_id: cfg.clientId, response_type: "code", redirect_uri: cfg.callbackUrl,
-    response_mode: "query", scope: "openid profile email", state: state.state, nonce: state.nonce,
+    response_mode: "query", scope: "openid profile email User.Read", state: state.state, nonce: state.nonce,
     code_challenge: createHash("sha256").update(state.verifier).digest("base64url"),
     code_challenge_method: "S256",
   }).toString();
@@ -133,12 +133,26 @@ export const authCallback = async (request) => {
     const token = await exchange.json();
     if (typeof token.id_token !== "string" || token.id_token.length > 32768) fail(401, "Sign-in could not be verified.");
     remoteKeys ||= createRemoteJWKSet(new URL(`https://login.microsoftonline.com/${cfg.tenant}/discovery/v2.0/keys`));
+
+    // Fetch group memberships from Graph using the access token (like installer.io does)
+    // This avoids requiring the `groups` claim in the ID token entirely.
+    let graphGroups = [];
+    if (token.access_token) {
+      try {
+        const memberOf = await fetch(
+          "https://graph.microsoft.com/v1.0/me/memberOf?$select=id&$top=100",
+          { headers: { Authorization: `Bearer ${token.access_token}` }, signal: AbortSignal.timeout(5000) }
+        );
+        if (memberOf.ok) {
+          const data = await memberOf.json();
+          graphGroups = (data.value || []).map((g) => g.id?.toLowerCase()).filter(Boolean);
+        }
+      } catch { /* non-fatal — groups check will fail cleanly below */ }
+    }
+
     let verified;
-    try { verified = await verifyEmployeeToken(token.id_token, remoteKeys, cfg, state.nonce); } catch (err) {
-      const preview = JSON.parse(Buffer.from(token.id_token.split(".")[1], "base64url").toString()).ver;
-      console.error("Employee token verification failed.", { message: err?.message?.slice(0, 200), tokenVer: preview });
-      const claims = JSON.parse(Buffer.from(token.id_token.split(".")[1], "base64url").toString());
-      console.error("Token claims present:", Object.keys(claims).join(", "));
+    try { verified = await verifyEmployeeToken(token.id_token, remoteKeys, cfg, state.nonce, graphGroups); } catch (err) {
+      console.error("Employee token verification failed.", { message: err?.message?.slice(0, 200), graphGroupCount: graphGroups.length });
       fail(403, "Employee identity or group membership was not accepted.");
     }
     const opaque = randomBytes(32).toString("base64url");

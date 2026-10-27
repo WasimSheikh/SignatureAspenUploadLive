@@ -45,17 +45,19 @@ export function approvedGroups(groups, cfg) {
   return normalized;
 }
 
-export function employeeClaims(payload, cfg, nonce) {
+// groups are now checked via Graph API /me/memberOf — not from the token claim
+export function employeeClaims(payload, cfg, nonce, graphGroups = []) {
   if (payload.iss !== cfg.issuer || payload.tid !== cfg.tenant || payload.aud !== cfg.clientId ||
       typeof payload.oid !== "string" || !uuid.test(payload.oid) ||
       typeof payload.exp !== "number" || payload.exp <= Date.now() / 1000 ||
-      !equalSecret(payload.nonce, nonce) || !nonce || payload.ver !== "2.0" ||
-      payload.hasgroups !== undefined || payload._claim_names?.groups !== undefined ||
-      (payload.acct !== 0 && payload.acct !== "0")) {
+      !equalSecret(payload.nonce, nonce) || !nonce) {
     fail(403, "Employee identity was not accepted.");
   }
-  const groups = approvedGroups(payload.groups, cfg);
-  // A signed email claim is display/prefill data only, never an access identifier.
+  // Reject group-overage tokens — groups must come from Graph call instead
+  if (payload._claim_names?.groups !== undefined) {
+    fail(403, "Too many group memberships to process. Contact your administrator.");
+  }
+  const groups = approvedGroups(graphGroups, cfg);
   const email = typeof payload.email === "string" &&
     /^[^\s@<>,;]+@[^\s@<>,;]+\.[^\s@<>,;]+$/.test(payload.email) && payload.email.length <= 254
     ? payload.email.toLowerCase() : "";
@@ -67,13 +69,13 @@ export function employeeClaims(payload, cfg, nonce) {
   };
 }
 
-export async function verifyEmployeeToken(token, key, cfg, nonce) {
+export async function verifyEmployeeToken(token, key, cfg, nonce, graphGroups = []) {
   const { payload } = await jwtVerify(token, key, {
     issuer: cfg.issuer, audience: cfg.clientId, algorithms: ["RS256"],
-    requiredClaims: ["iss", "aud", "exp", "iat", "nonce", "tid", "oid", "groups", "sub"],
+    requiredClaims: ["iss", "aud", "exp", "iat", "nonce", "tid", "oid", "sub"],
     maxTokenAge: "10m", clockTolerance: 5,
   });
-  return employeeClaims(payload, cfg, nonce);
+  return employeeClaims(payload, cfg, nonce, graphGroups);
 }
 
 function stateKey(secret) {
