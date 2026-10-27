@@ -65,126 +65,158 @@ function parseMessage(raw) {
   return { name, phone, notes: notes.join("\n") };
 }
 
-// ── Shared email chrome ──────────────────────────────────────────────────────
+// ── Shared helpers ────────────────────────────────────────────────────────────
 
 const LOGO_URL = "https://signatureaspen.com/wp-content/uploads/2023/09/logo2.png";
+const FONT = "Arial,Helvetica,sans-serif";
+const NAVY = "#0E3760";
+const GREEN = "#77C045";
+const MUTED = "#5F6B7A";
+const LINE = "#E2E7EE";
+const SURFACE = "#F5F7FA";
+
+// Outlook-compatible button (table-based so bgcolor works in Word rendering engine)
+function btnNavy(url, label) {
+  return `<table cellpadding="0" cellspacing="0" border="0" style="margin:8px 0 0 0"><tr>
+<td style="border-radius:8px;background-color:${NAVY}" bgcolor="${NAVY}">
+<a href="${escapeHtml(url)}" style="display:inline-block;padding:13px 24px;border-radius:8px;background-color:${NAVY};color:#ffffff;font-weight:700;font-size:15px;text-decoration:none;font-family:${FONT};line-height:1.3;mso-padding-alt:13px 24px">${label}</a>
+</td></tr></table>`;
+}
+
+function btnGreen(url, label) {
+  return `<table cellpadding="0" cellspacing="0" border="0" style="margin:8px auto 0 auto"><tr>
+<td style="border-radius:8px;background-color:${GREEN}" bgcolor="${GREEN}">
+<a href="${escapeHtml(url)}" style="display:inline-block;padding:16px 30px;border-radius:8px;background-color:${GREEN};color:#0A2847;font-weight:700;font-size:17px;text-decoration:none;font-family:${FONT};line-height:1.3;mso-padding-alt:16px 30px">${label}</a>
+</td></tr></table>`;
+}
+
+function btnOutline(url, label) {
+  return `<table cellpadding="0" cellspacing="0" border="0" style="margin:8px 0 0 0"><tr>
+<td style="border-radius:8px;border:1px solid #9FB0C5">
+<a href="${escapeHtml(url)}" style="display:inline-block;padding:12px 22px;border-radius:8px;background-color:#ffffff;color:${NAVY};font-weight:700;font-size:15px;text-decoration:none;font-family:${FONT};line-height:1.3;mso-padding-alt:12px 22px">${label}</a>
+</td></tr></table>`;
+}
+
+function p(text, style = "") {
+  return `<p style="margin:0 0 14px 0;color:#1A1A1A;font-family:${FONT};font-size:15px;line-height:1.55;${style}">${text}</p>`;
+}
+
+// ── Email wrapper — fully table-based, no <style> block ───────────────────────
 
 function emailWrap(body, footer) {
   return `<!DOCTYPE html>
 <html lang="en">
-<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<style>
-body{margin:0;padding:0;background:#F5F7FA;font-family:Inter,Arial,sans-serif;font-size:15px;line-height:1.55;color:#1A1A1A}
-.wrap{max-width:600px;margin:24px auto;background:#fff;border:1px solid #E2E7EE;border-radius:6px;overflow:hidden}
-.em-head{padding:20px 32px 16px;border-bottom:1px solid #E2E7EE;border-top:4px solid #77C045}
-.logo{height:44px;max-width:200px;display:block}
-.em-body{padding:28px 32px 26px}
-.em-h{font-family:Raleway,Arial,sans-serif;font-weight:700;color:#0E3760;font-size:28px;line-height:1.15;margin:0 0 12px}
-.lede{font-size:17px;line-height:1.45;margin:0 0 18px;color:#1A1A1A}
-.lede b{color:#0E3760}
-p{margin:0 0 14px}
-a{color:#0E3760}
-.receipt{border:1px solid #E2E7EE;border-radius:10px;background:#F5F7FA;margin:18px 0 14px;overflow:hidden}
-.rc-top{padding:14px 16px;background:#fff;border-bottom:1px solid #E2E7EE;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px 18px}
-.rc-full{grid-column:1/-1}
-.lbl{font-size:11px;font-weight:600;letter-spacing:.07em;text-transform:uppercase;color:#5F6B7A}
-.val{font-weight:600;color:#1A1A1A;margin-top:2px}
-.mono{font-variant-numeric:tabular-nums}
-.rc-files{padding:4px 16px}
-.rc-row{display:flex;justify-content:space-between;gap:14px;padding:9px 0;border-bottom:1px solid #E2E7EE;font-size:14px}
-.rc-row:last-child{border-bottom:0;font-weight:600}
-.rc-row span:last-child{color:#5F6B7A;white-space:nowrap}
-.rc-row.total span:last-child{color:#1A1A1A}
-.calm{background:#F0F8EA;border:1px solid #CFE6BF;border-radius:10px;padding:12px 16px;color:#2E5A18;font-size:14px;margin:0 0 22px}
-.sec-h{font-family:Raleway,Arial,sans-serif;font-weight:700;color:#0E3760;font-size:17px;margin:0 0 10px}
-.steps{list-style:none;margin:0 0 22px;padding:0}
-.steps li{display:flex;gap:12px;align-items:flex-start;padding:7px 0;font-size:14px}
-.steps .n{flex:none;width:24px;height:24px;border-radius:50%;background:#0E3760;color:#fff;font-size:12px;font-weight:600;display:flex;align-items:center;justify-content:center;margin-top:1px}
-.btn{display:inline-block;padding:13px 24px;border-radius:8px;font-weight:600;font-size:15px;line-height:1.2;text-decoration:none;text-align:center}
-.btn-navy{background:#0E3760;color:#fff}
-.btn-green{background:#77C045;color:#0A2847}
-.okcircle{width:56px;height:56px;border-radius:50%;background:#F0F8EA;border:2px solid #77C045;color:#4E8A2A;display:flex;align-items:center;justify-content:center;margin:0 0 16px;font-size:28px;line-height:1}
-.dgrid{display:grid;grid-template-columns:110px minmax(0,1fr);gap:6px 14px;margin:0 0 18px;padding:14px 16px;background:#F5F7FA;border:1px solid #E2E7EE;border-radius:10px;font-size:14px}
-.dgrid dt{color:#5F6B7A}
-.dgrid dd{margin:0;font-weight:500;overflow-wrap:anywhere}
-.quote{margin:0 0 18px;border-left:3px solid #0E3760;padding:4px 0 4px 14px}
-.quote .lbl{margin-bottom:4px}
-.quote p{margin:0;font-size:15px;color:#27324a;white-space:pre-wrap}
-.frows{border-top:1px solid #E2E7EE;margin:0 0 18px}
-.frow{display:grid;grid-template-columns:46px 1fr auto;gap:8px 12px;align-items:center;padding:10px 0;border-bottom:1px solid #E2E7EE;font-size:14px}
-.badge{display:inline-block;min-width:40px;text-align:center;font-size:10px;font-weight:700;letter-spacing:.04em;padding:4px 5px;border-radius:5px;background:#E3ECF7;color:#0E3760}
-.badge-zip{background:#F0F8EA;color:#4E8A2A}
-.badge-pdf{background:#FDEEEC;color:#9B2C1F}
-.fmeta{display:flex;gap:14px;align-items:center;white-space:nowrap;color:#5F6B7A}
-.fmeta a{color:#0E3760;font-weight:600;text-decoration:none;border-bottom:1px solid #B3C0D1}
-.foot{padding:16px 32px 20px;border-top:1px solid #E2E7EE;background:#FAFBFD;text-align:center;font-size:12px;line-height:1.7;color:#5F6B7A}
-.foot a{color:#5F6B7A}
-.foot b{color:#0E3760}
-.foot .why{margin-top:8px;font-size:11px}
-</style></head>
-<body><div style="padding:16px 0">
-<div class="wrap">
-  <div class="em-head">
-    <img src="${LOGO_URL}" alt="Signature Aspen" class="logo" referrerpolicy="no-referrer">
-  </div>
-  <div class="em-body">${body}</div>
-  <div class="foot">${footer}</div>
-</div>
-</div></body></html>`;
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="x-apple-disable-message-reformatting">
+<!--[if mso]><xml><o:OfficeDocumentSettings><o:PixelsPerInch>96</o:PixelsPerInch></o:OfficeDocumentSettings></xml><![endif]-->
+</head>
+<body style="margin:0;padding:0;background-color:${SURFACE};font-family:${FONT}">
+<table width="100%" cellpadding="0" cellspacing="0" border="0" role="presentation" style="background-color:${SURFACE}">
+<tr><td align="center" style="padding:24px 16px">
+<table width="600" cellpadding="0" cellspacing="0" border="0" role="presentation" style="max-width:600px;width:100%;background-color:#ffffff;border:1px solid ${LINE};border-radius:6px">
+  <tr><td style="border-top:4px solid ${GREEN};padding:20px 32px 16px;border-bottom:1px solid ${LINE}">
+    <img src="${LOGO_URL}" alt="Signature Aspen" height="44" style="display:block;max-width:200px;height:44px;border:0" referrerpolicy="no-referrer">
+  </td></tr>
+  <tr><td style="padding:28px 32px 26px;font-family:${FONT};font-size:15px;color:#1A1A1A;line-height:1.55">
+    ${body}
+  </td></tr>
+  <tr><td style="padding:16px 32px 20px;border-top:1px solid ${LINE};background-color:#FAFBFD;text-align:center;font-size:12px;line-height:1.7;color:${MUTED};font-family:${FONT}">
+    ${footer}
+  </td></tr>
+</table>
+</td></tr>
+</table>
+</body></html>`;
 }
 
-const COMMON_FOOTER = `<p><b>Signature Aspen</b> &middot; the IMAGE communications company</p>
-<p>3300 Kingswood St, Houston, Texas 77092 &middot; 713.830.9500 &middot; <a href="https://signatureaspen.com">signatureaspen.com</a></p>`;
+const COMMON_FOOTER = `<p style="margin:0 0 4px 0;color:${MUTED};font-family:${FONT};font-size:12px"><b style="color:${NAVY}">Signature Aspen</b> &middot; the IMAGE communications company</p>
+<p style="margin:0;color:${MUTED};font-family:${FONT};font-size:12px">3300 Kingswood St, Houston, Texas 77092 &middot; 713.830.9500 &middot; <a href="https://signatureaspen.com" style="color:${MUTED}">signatureaspen.com</a></p>`;
 
-// ── Customer confirmation email ───────────────────────────────────────────────
+// ── Email 1: Customer confirmation ────────────────────────────────────────────
 
 function customerHtml(transfer, files, receipt, contactName) {
-  const { name, notes } = parseMessage(transfer.message);
+  const { name } = parseMessage(transfer.message);
   const firstName = name.trim().split(/\s+/)[0] || "there";
   const url = publicUrl(transfer.id);
   const totalBytes = files.reduce((s, f) => s + Number(f.size), 0);
   const received = new Date().toLocaleString("en-US", { weekday: "short", month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
 
-  const fileRows = files.map((f) => {
-    return `<div class="rc-row"><span>${escapeHtml(f.name)}</span><span>${fmtSize(Number(f.size))}</span></div>`;
-  }).join("");
+  const fileRows = files.map((f) =>
+    `<tr>
+      <td style="padding:9px 0;border-bottom:1px solid ${LINE};font-size:14px;font-family:${FONT};color:#1A1A1A">${escapeHtml(f.name)}</td>
+      <td style="padding:9px 0;border-bottom:1px solid ${LINE};font-size:14px;font-family:${FONT};color:${MUTED};white-space:nowrap;text-align:right">${fmtSize(Number(f.size))}</td>
+    </tr>`
+  ).join("");
 
   const body = `
-    <div class="okcircle" aria-hidden="true">✓</div>
-    <div class="em-h">Your files are in.</div>
-    <p>Hi ${escapeHtml(firstName)}, thanks for sending these over. ${escapeHtml(contactName)} has them and will be in touch if anything needs a second look.</p>
+    <div style="width:56px;height:56px;border-radius:50%;background-color:#F0F8EA;border:2px solid ${GREEN};color:#4E8A2A;font-size:28px;line-height:56px;text-align:center;margin:0 0 16px 0;font-family:${FONT}">✓</div>
+    <h1 style="font-family:Georgia,serif;font-weight:700;color:${NAVY};font-size:28px;line-height:1.15;margin:0 0 12px 0">Your files are in.</h1>
+    ${p(`Hi ${escapeHtml(firstName)}, thanks for sending these over. ${escapeHtml(contactName)} has them and will be in touch if anything needs a second look.`)}
 
-    <div class="receipt">
-      <div class="rc-top">
-        <div><div class="lbl">Receipt</div><div class="val mono">${escapeHtml(receipt)}</div></div>
-        <div><div class="lbl">Received</div><div class="val">${escapeHtml(received)}</div></div>
-        <div class="rc-full"><div class="lbl">Job</div><div class="val">${escapeHtml(transfer.title || "")}</div></div>
-      </div>
-      <div class="rc-files">
-        ${fileRows}
-        <div class="rc-row total"><span>Total, ${files.length} file${files.length !== 1 ? "s" : ""}</span><span>${fmtSize(totalBytes)}</span></div>
-      </div>
-    </div>
+    <table width="100%" cellpadding="0" cellspacing="0" border="0" role="presentation" style="border:1px solid ${LINE};border-radius:10px;margin:18px 0 14px 0;overflow:hidden">
+      <tr><td style="background-color:#ffffff;padding:14px 16px;border-bottom:1px solid ${LINE}">
+        <table width="100%" cellpadding="0" cellspacing="0" border="0" role="presentation">
+          <tr>
+            <td width="50%" style="padding:0 9px 0 0;vertical-align:top">
+              <div style="font-size:11px;font-weight:600;letter-spacing:.07em;text-transform:uppercase;color:${MUTED};font-family:${FONT}">Receipt</div>
+              <div style="font-weight:600;color:#1A1A1A;margin-top:2px;font-family:${FONT};font-size:15px">${escapeHtml(receipt)}</div>
+            </td>
+            <td width="50%" style="vertical-align:top">
+              <div style="font-size:11px;font-weight:600;letter-spacing:.07em;text-transform:uppercase;color:${MUTED};font-family:${FONT}">Received</div>
+              <div style="font-weight:600;color:#1A1A1A;margin-top:2px;font-family:${FONT};font-size:15px">${escapeHtml(received)}</div>
+            </td>
+          </tr>
+          <tr><td colspan="2" style="padding-top:12px;vertical-align:top">
+            <div style="font-size:11px;font-weight:600;letter-spacing:.07em;text-transform:uppercase;color:${MUTED};font-family:${FONT}">Job</div>
+            <div style="font-weight:600;color:#1A1A1A;margin-top:2px;font-family:${FONT};font-size:15px">${escapeHtml(transfer.title || "")}</div>
+          </td></tr>
+        </table>
+      </td></tr>
+      <tr><td style="padding:4px 16px;background-color:${SURFACE}">
+        <table width="100%" cellpadding="0" cellspacing="0" border="0" role="presentation">
+          ${fileRows}
+          <tr>
+            <td style="padding:9px 0;font-size:14px;font-weight:700;font-family:${FONT};color:#1A1A1A">Total, ${files.length} file${files.length !== 1 ? "s" : ""}</td>
+            <td style="padding:9px 0;font-size:14px;font-weight:700;font-family:${FONT};color:#1A1A1A;text-align:right">${fmtSize(totalBytes)}</td>
+          </tr>
+        </table>
+      </td></tr>
+    </table>
 
-    <div class="calm">No need to send these again. We have every file listed above.</div>
+    <table width="100%" cellpadding="0" cellspacing="0" border="0" role="presentation" style="margin:0 0 22px 0">
+    <tr><td style="background-color:#F0F8EA;border:1px solid #CFE6BF;border-radius:10px;padding:12px 16px;color:#2E5A18;font-size:14px;font-family:${FONT}" bgcolor="#F0F8EA">
+      No need to send these again. We have every file listed above.
+    </td></tr>
+    </table>
 
-    <div class="sec-h">What happens next</div>
-    <ol class="steps">
-      <li><span class="n">1</span><span>Prepress checks your files, usually within 2 business hours.</span></li>
-      <li><span class="n">2</span><span>${escapeHtml(contactName)} will be in touch if we need anything else.</span></li>
-      <li><span class="n">3</span><span>We move forward once everything looks good.</span></li>
-    </ol>
+    <h2 style="font-family:Georgia,serif;font-weight:700;color:${NAVY};font-size:17px;margin:0 0 10px 0">What happens next</h2>
+    <table cellpadding="0" cellspacing="0" border="0" role="presentation" style="margin:0 0 22px 0;width:100%">
+      <tr>
+        <td valign="top" style="width:34px;padding:7px 0"><span style="display:inline-block;width:24px;height:24px;border-radius:50%;background-color:${NAVY};color:#ffffff;font-size:12px;font-weight:700;text-align:center;line-height:24px;font-family:${FONT}">1</span></td>
+        <td style="padding:7px 0 7px 8px;font-size:14px;color:#1A1A1A;font-family:${FONT}">Prepress checks your files, usually within 2 business hours.</td>
+      </tr>
+      <tr>
+        <td valign="top" style="width:34px;padding:7px 0"><span style="display:inline-block;width:24px;height:24px;border-radius:50%;background-color:${NAVY};color:#ffffff;font-size:12px;font-weight:700;text-align:center;line-height:24px;font-family:${FONT}">2</span></td>
+        <td style="padding:7px 0 7px 8px;font-size:14px;color:#1A1A1A;font-family:${FONT}">${escapeHtml(contactName)} will be in touch if we need anything else.</td>
+      </tr>
+      <tr>
+        <td valign="top" style="width:34px;padding:7px 0"><span style="display:inline-block;width:24px;height:24px;border-radius:50%;background-color:${NAVY};color:#ffffff;font-size:12px;font-weight:700;text-align:center;line-height:24px;font-family:${FONT}">3</span></td>
+        <td style="padding:7px 0 7px 8px;font-size:14px;color:#1A1A1A;font-family:${FONT}">We move forward once everything looks good.</td>
+      </tr>
+    </table>
 
-    <p style="margin-top:8px"><a class="btn btn-navy" href="${escapeHtml(url)}">View your transfer</a></p>
-    <p class="small" style="font-size:13px;color:#5F6B7A;margin-top:14px">Questions? Just reply to this email and it goes straight to ${escapeHtml(contactName)}.</p>`;
+    ${btnNavy(url, "View your transfer")}
+    <p style="font-size:13px;color:${MUTED};margin:14px 0 0 0;font-family:${FONT}">Questions? Just reply to this email and it goes straight to ${escapeHtml(contactName)}.</p>`;
 
   const footer = `${COMMON_FOOTER}
-    <p class="why">You got this email because you sent files to Signature Aspen${transfer.title ? ` for ${escapeHtml(transfer.title)}` : ""}.</p>`;
+    <p style="margin:8px 0 0 0;font-size:11px;color:${MUTED};font-family:${FONT}">You got this email because you sent files to Signature Aspen${transfer.title ? ` for ${escapeHtml(transfer.title)}` : ""}.</p>`;
 
   return emailWrap(body, footer);
 }
 
-// ── Internal alert email ──────────────────────────────────────────────────────
+// ── Email 3: Internal alert ───────────────────────────────────────────────────
 
 function internalHtml(transfer, files, receipt, contactName) {
   const { name, phone, notes } = parseMessage(transfer.message);
@@ -194,41 +226,56 @@ function internalHtml(transfer, files, receipt, contactName) {
 
   const fileRows = files.map((f) => {
     const ext = (f.name.split(".").pop() || "").toLowerCase();
-    const cls = ext === "pdf" ? "badge-pdf" : ["zip", "7z", "rar"].includes(ext) ? "badge-zip" : "";
-    return `<div class="frow">
-      <span class="badge ${cls}">${ext.toUpperCase().slice(0, 4) || "FILE"}</span>
-      <span style="font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escapeHtml(f.name)}</span>
-      <span class="fmeta"><span>${fmtSize(Number(f.size))}</span></span>
-    </div>`;
+    const badgeBg = ext === "pdf" ? "#FDEEEC" : ["zip", "7z", "rar"].includes(ext) ? "#F0F8EA" : "#E3ECF7";
+    const badgeColor = ext === "pdf" ? "#9B2C1F" : ["zip", "7z", "rar"].includes(ext) ? "#4E8A2A" : NAVY;
+    return `<tr>
+      <td style="padding:10px 12px 10px 0;border-bottom:1px solid ${LINE};width:46px;vertical-align:middle">
+        <span style="display:inline-block;min-width:40px;text-align:center;font-size:10px;font-weight:700;letter-spacing:.04em;padding:4px 5px;border-radius:5px;background-color:${badgeBg};color:${badgeColor};font-family:${FONT}">${ext.toUpperCase().slice(0, 4) || "FILE"}</span>
+      </td>
+      <td style="padding:10px 12px 10px 0;border-bottom:1px solid ${LINE};font-size:14px;font-weight:500;color:#1A1A1A;font-family:${FONT}">${escapeHtml(f.name)}</td>
+      <td style="padding:10px 0;border-bottom:1px solid ${LINE};font-size:13px;color:${MUTED};white-space:nowrap;text-align:right;font-family:${FONT}">${fmtSize(Number(f.size))}</td>
+    </tr>`;
   }).join("");
 
+  const detailRows = [
+    ["From", `${escapeHtml(name || "")}${transfer.company ? `, ${escapeHtml(transfer.company)}` : ""}`],
+    ["Email", `<a href="mailto:${escapeHtml(transfer.sender_email)}" style="color:${NAVY}">${escapeHtml(transfer.sender_email)}</a>`],
+    ...(phone ? [["Phone", `<a href="tel:${escapeHtml(phone)}" style="color:${NAVY}">${escapeHtml(phone)}</a>`]] : []),
+    ...(transfer.title ? [["Job", escapeHtml(transfer.title)]] : []),
+    ["Contact", escapeHtml(contactName)],
+    ["Received", escapeHtml(received)],
+    ["Receipt", escapeHtml(receipt)],
+  ].map(([label, value]) => `<tr>
+    <td width="110" valign="top" style="padding:6px 14px 6px 16px;color:${MUTED};font-size:14px;font-family:${FONT}">${label}</td>
+    <td valign="top" style="padding:6px 16px 6px 0;font-size:14px;font-weight:500;color:#1A1A1A;font-family:${FONT}">${value}</td>
+  </tr>`).join("");
+
   const body = `
-    <p class="lede"><b>${escapeHtml(name || transfer.sender_email)}</b> sent <b>${files.length} file${files.length !== 1 ? "s" : ""}</b>${transfer.title ? ` for <b>${escapeHtml(transfer.title)}</b>` : ""}.</p>
+    <p style="font-size:17px;line-height:1.45;margin:0 0 18px 0;color:#1A1A1A;font-family:${FONT}"><b style="color:${NAVY}">${escapeHtml(name || transfer.sender_email)}</b> sent <b style="color:${NAVY}">${files.length} file${files.length !== 1 ? "s" : ""}</b>${transfer.title ? ` for <b style="color:${NAVY}">${escapeHtml(transfer.title)}</b>` : ""}.</p>
 
-    <dl class="dgrid">
-      <dt>From</dt><dd>${escapeHtml(name || "")}${transfer.company ? `, ${escapeHtml(transfer.company)}` : ""}</dd>
-      <dt>Email</dt><dd><a href="mailto:${escapeHtml(transfer.sender_email)}">${escapeHtml(transfer.sender_email)}</a></dd>
-      ${phone ? `<dt>Phone</dt><dd><a href="tel:${escapeHtml(phone)}">${escapeHtml(phone)}</a></dd>` : ""}
-      ${transfer.title ? `<dt>Job</dt><dd>${escapeHtml(transfer.title)}</dd>` : ""}
-      <dt>Contact</dt><dd>${escapeHtml(contactName)}</dd>
-      <dt>Received</dt><dd>${escapeHtml(received)}</dd>
-      <dt>Receipt</dt><dd class="mono">${escapeHtml(receipt)}</dd>
-    </dl>
+    <table width="100%" cellpadding="0" cellspacing="0" border="0" role="presentation" style="margin:0 0 18px 0;background-color:${SURFACE};border:1px solid ${LINE};border-radius:10px" bgcolor="#F5F7FA">
+      ${detailRows}
+    </table>
 
-    ${notes ? `<div class="quote"><div class="lbl">Their note</div><p>${escapeHtml(notes)}</p></div>` : ""}
+    ${notes ? `<div style="margin:0 0 18px 0;border-left:3px solid ${NAVY};padding:4px 0 4px 14px">
+      <div style="font-size:11px;font-weight:600;letter-spacing:.07em;text-transform:uppercase;color:${MUTED};margin-bottom:4px;font-family:${FONT}">Their note</div>
+      <p style="margin:0;font-size:15px;color:#27324a;font-family:${FONT};white-space:pre-wrap">${escapeHtml(notes)}</p>
+    </div>` : ""}
 
-    <div style="display:flex;justify-content:space-between;align-items:baseline;gap:10px;margin:0 0 4px">
-      <span class="sec-h">Files</span>
-      <span style="font-size:13px;color:#5F6B7A">${files.length} file${files.length !== 1 ? "s" : ""}, ${fmtSize(totalBytes)}</span>
-    </div>
-    <div class="frows">${fileRows}</div>
+    <table width="100%" cellpadding="0" cellspacing="0" border="0" role="presentation" style="margin:0 0 4px 0">
+    <tr>
+      <td style="font-family:Georgia,serif;font-weight:700;color:${NAVY};font-size:17px">Files</td>
+      <td style="text-align:right;font-size:13px;color:${MUTED};font-family:${FONT}">${files.length} file${files.length !== 1 ? "s" : ""}, ${fmtSize(totalBytes)}</td>
+    </tr>
+    </table>
+    <table width="100%" cellpadding="0" cellspacing="0" border="0" role="presentation" style="border-top:1px solid ${LINE};margin:0 0 18px 0">
+      ${fileRows}
+    </table>
 
-    <p><a class="btn btn-navy" href="${escapeHtml(url)}">Download all (${fmtSize(totalBytes)})</a></p>
-    <p style="font-size:12px;color:#5F6B7A;margin-top:8px">Files keep their original names. Click the link above to view and download.</p>`;
+    ${btnNavy(url, `Download all (${fmtSize(totalBytes)})`)}
+    <p style="font-size:12px;color:${MUTED};margin:8px 0 0 0;font-family:${FONT}">Files keep their original names.</p>`;
 
-  const footer = `${COMMON_FOOTER}`;
-
-  return emailWrap(body, footer);
+  return emailWrap(body, COMMON_FOOTER);
 }
 
 // ── Email 2: Upload request link ──────────────────────────────────────────────
@@ -239,32 +286,40 @@ function uploadRequestHtml(contact, customer, job, appUrl) {
   const expiryStr = job.expiresAt ? new Date(job.expiresAt).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }) : "";
 
   const body = `
-    <p>Hi ${escapeHtml(customer.firstName || customer.name || "there")},</p>
-    <div style="display:flex;gap:14px;border-left:3px solid #77C045;background:#F5F7FA;border-radius:0 10px 10px 0;padding:16px 18px;margin:0 0 20px">
-      <div style="flex:none;width:40px;height:40px;border-radius:50%;background:#0E3760;color:#fff;font-weight:600;font-size:14px;display:flex;align-items:center;justify-content:center">${escapeHtml(initials)}</div>
-      <div>
-        <p style="margin-bottom:10px">${escapeHtml(job.message || "Please send your files using the link below.")}</p>
-        <div style="font-size:13px;color:#5F6B7A;line-height:1.45"><b style="color:#1A1A1A">${escapeHtml(contact.name)}</b><br>${escapeHtml(contact.role || "Signature Aspen")}</div>
-      </div>
-    </div>
-    <div style="display:flex;gap:14px;align-items:flex-start;border:1px solid #E2E7EE;border-radius:10px;padding:16px;margin:0 0 24px;background:#fff">
-      <div style="flex:none;width:40px;height:40px;border-radius:8px;background:#E3ECF7;color:#0E3760;display:flex;align-items:center;justify-content:center">
-        <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7.5A1.5 1.5 0 0 1 4.5 6h4.2l2 2.5h8.8A1.5 1.5 0 0 1 21 10v8a1.5 1.5 0 0 1-1.5 1.5h-15A1.5 1.5 0 0 1 3 18z"/></svg>
-      </div>
-      <div>
-        ${job.number ? `<div style="font-size:12px;font-weight:600;color:#5F6B7A;letter-spacing:.04em">JOB #${escapeHtml(job.number)}</div>` : ""}
-        <div style="font-family:Georgia,serif;font-weight:700;color:#0E3760;font-size:19px;line-height:1.25;margin:2px 0 8px">${escapeHtml(job.title)}</div>
-        ${expiryStr ? `<div style="display:flex;align-items:center;gap:6px;font-size:13px;color:#1A1A1A"><span style="color:#4E8A2A">✓</span>Link active until ${escapeHtml(expiryStr)}</div>` : ""}
-      </div>
-    </div>
-    <div style="text-align:center">
-      <a href="${escapeHtml(prefilledUrl)}" style="display:inline-block;padding:16px 30px;border-radius:8px;background:#77C045;color:#0A2847;font-weight:600;font-size:17px;text-decoration:none">Send your files</a>
-    </div>
-    <p style="font-size:12.5px;color:#5F6B7A;text-align:center;margin:12px 0 0">This link only sends files for this job. You don't need an account.</p>
-    <p style="font-size:12.5px;color:#5F6B7A;text-align:center;margin:6px 0 0">Up to 100 files and 20 GiB per send. PDF, AI, EPS, PSD, INDD, TIF, JPG, PNG or ZIP.</p>`;
+    ${p(`Hi ${escapeHtml(customer.firstName || customer.name || "there")},`)}
+    <table width="100%" cellpadding="0" cellspacing="0" border="0" role="presentation" style="margin:0 0 20px 0;border-left:3px solid ${GREEN};background-color:${SURFACE};border-radius:0 10px 10px 0" bgcolor="#F5F7FA">
+    <tr>
+      <td valign="top" style="padding:16px 0 16px 18px;width:54px">
+        <span style="display:inline-block;width:40px;height:40px;border-radius:50%;background-color:${NAVY};color:#ffffff;font-weight:600;font-size:14px;text-align:center;line-height:40px;font-family:${FONT}">${escapeHtml(initials)}</span>
+      </td>
+      <td valign="top" style="padding:16px 18px 16px 14px">
+        <p style="margin:0 0 10px 0;font-size:15px;color:#1A1A1A;font-family:${FONT}">${escapeHtml(job.message || "Please send your files using the link below.")}</p>
+        <div style="font-size:13px;color:${MUTED};line-height:1.45;font-family:${FONT}"><b style="color:#1A1A1A">${escapeHtml(contact.name)}</b><br>${escapeHtml(contact.role || "Signature Aspen")}</div>
+      </td>
+    </tr>
+    </table>
+
+    <table width="100%" cellpadding="0" cellspacing="0" border="0" role="presentation" style="margin:0 0 24px 0;border:1px solid ${LINE};border-radius:10px;background-color:#ffffff" bgcolor="#ffffff">
+    <tr>
+      <td valign="top" style="padding:16px 0 16px 16px;width:54px">
+        <span style="display:inline-block;width:40px;height:40px;border-radius:8px;background-color:#E3ECF7;color:${NAVY};text-align:center;line-height:40px;font-size:20px">📁</span>
+      </td>
+      <td valign="top" style="padding:16px 16px 16px 14px">
+        ${job.number ? `<div style="font-size:12px;font-weight:600;color:${MUTED};letter-spacing:.04em;font-family:${FONT}">JOB #${escapeHtml(job.number)}</div>` : ""}
+        <div style="font-family:Georgia,serif;font-weight:700;color:${NAVY};font-size:19px;line-height:1.25;margin:2px 0 8px 0">${escapeHtml(job.title)}</div>
+        ${expiryStr ? `<div style="font-size:13px;color:#1A1A1A;font-family:${FONT}"><span style="color:#4E8A2A">✓</span> Link active until ${escapeHtml(expiryStr)}</div>` : ""}
+      </td>
+    </tr>
+    </table>
+
+    <table width="100%" cellpadding="0" cellspacing="0" border="0" role="presentation"><tr><td align="center">
+      ${btnGreen(prefilledUrl, "Send your files")}
+    </td></tr></table>
+    <p style="font-size:12.5px;color:${MUTED};text-align:center;margin:12px 0 0 0;font-family:${FONT}">This link only sends files for this job. You don't need an account.</p>
+    <p style="font-size:12.5px;color:${MUTED};text-align:center;margin:6px 0 0 0;font-family:${FONT}">Up to 100 files and 20 GiB per send. PDF, AI, EPS, PSD, INDD, TIF, JPG, PNG or ZIP.</p>`;
 
   const footer = `${COMMON_FOOTER}
-    <p class="why">${escapeHtml(contact.name)} created this link for you. Reply to this email if you have questions.</p>`;
+    <p style="margin:8px 0 0 0;font-size:11px;color:${MUTED};font-family:${FONT}">${escapeHtml(contact.name)} created this link for you. Reply to this email if you have questions.</p>`;
 
   return emailWrap(body, footer);
 }
@@ -277,30 +332,49 @@ function unopenedAlertHtml(transfer, files, receipt, contactName, sentAt) {
   const url = publicUrl(transfer.id);
 
   const fileRows = files.map((f) =>
-    `<div class="rc-row"><span>${escapeHtml(f.name)}</span><span>${fmtSize(Number(f.size))}</span></div>`
+    `<tr>
+      <td style="padding:9px 0;border-bottom:1px solid ${LINE};font-size:14px;font-family:${FONT};color:#1A1A1A">${escapeHtml(f.name)}</td>
+      <td style="padding:9px 0;border-bottom:1px solid ${LINE};font-size:14px;font-family:${FONT};color:${MUTED};white-space:nowrap;text-align:right">${fmtSize(Number(f.size))}</td>
+    </tr>`
   ).join("");
 
   const body = `
-    <div style="display:flex;align-items:center;gap:12px;background:#FFF7E6;border-bottom:1px solid #F0D9A6;color:#6F470C;padding:14px 32px;margin:-28px -32px 20px">
-      <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="#B7791F" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" style="flex:none"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3.2 2"/></svg>
-      <div>
-        <b style="display:block;font-weight:600;font-size:15px">Not opened yet</b>
-        <span style="font-size:13px">Sent 2 hours ago, at ${escapeHtml(sentAt)}</span>
-      </div>
-    </div>
-    <p class="lede">Files from <b>${escapeHtml(name || transfer.sender_email)}</b>${transfer.title ? ` for <b>${escapeHtml(transfer.title)}</b>` : ""} were sent at ${escapeHtml(sentAt)} and nobody has opened them yet. <b>${escapeHtml(contactName)}</b> was the contact.</p>
-    <div style="border:1px solid #E2E7EE;border-radius:10px;padding:2px 16px;margin:0 0 20px">
-      ${fileRows}
-      <div class="rc-row" style="font-weight:600;border-bottom:0"><span>Total, ${files.length} file${files.length !== 1 ? "s" : ""}</span><span style="color:#1A1A1A">${fmtSize(totalBytes)}</span></div>
-    </div>
-    <div style="display:flex;flex-wrap:wrap;gap:10px;margin:0 0 16px">
-      <a href="${escapeHtml(url)}" style="display:inline-block;padding:12px 22px;border-radius:8px;background:#0E3760;color:#fff;font-weight:600;font-size:15px;text-decoration:none">Open the files</a>
-      <a href="${escapeHtml(url)}" style="display:inline-block;padding:12px 22px;border-radius:8px;border:1px solid #9FB0C5;color:#0E3760;font-weight:600;font-size:15px;text-decoration:none">View transfer</a>
-    </div>
-    <p style="font-size:12.5px;color:#5F6B7A">Sent once, and only if no one opens the files within 2 business hours. The customer already has a confirmation.</p>`;
+    <table width="100%" cellpadding="0" cellspacing="0" border="0" role="presentation" style="margin:-28px -32px 20px -32px;width:calc(100% + 64px)" bgcolor="#FFF7E6">
+    <tr><td style="background-color:#FFF7E6;border-bottom:1px solid #F0D9A6;padding:14px 32px" bgcolor="#FFF7E6">
+      <table cellpadding="0" cellspacing="0" border="0" role="presentation"><tr>
+        <td valign="middle" style="padding-right:12px;font-size:20px">&#9200;</td>
+        <td valign="middle">
+          <b style="display:block;font-weight:600;font-size:15px;color:#6F470C;font-family:${FONT}">Not opened yet</b>
+          <span style="font-size:13px;color:#6F470C;font-family:${FONT}">Sent 2 hours ago, at ${escapeHtml(sentAt)}</span>
+        </td>
+      </tr></table>
+    </td></tr>
+    </table>
+
+    <p style="font-size:17px;line-height:1.45;margin:0 0 18px 0;color:#1A1A1A;font-family:${FONT}">Files from <b style="color:${NAVY}">${escapeHtml(name || transfer.sender_email)}</b>${transfer.title ? ` for <b style="color:${NAVY}">${escapeHtml(transfer.title)}</b>` : ""} were sent at ${escapeHtml(sentAt)} and nobody has opened them yet. <b style="color:${NAVY}">${escapeHtml(contactName)}</b> was the contact.</p>
+
+    <table width="100%" cellpadding="0" cellspacing="0" border="0" role="presentation" style="border:1px solid ${LINE};border-radius:10px;margin:0 0 20px 0">
+    <tr><td style="padding:2px 16px">
+      <table width="100%" cellpadding="0" cellspacing="0" border="0" role="presentation">
+        ${fileRows}
+        <tr>
+          <td style="padding:9px 0;font-size:14px;font-weight:700;font-family:${FONT};color:#1A1A1A">Total, ${files.length} file${files.length !== 1 ? "s" : ""}</td>
+          <td style="padding:9px 0;font-size:14px;font-weight:700;font-family:${FONT};color:#1A1A1A;text-align:right">${fmtSize(totalBytes)}</td>
+        </tr>
+      </table>
+    </td></tr>
+    </table>
+
+    <table cellpadding="0" cellspacing="0" border="0" role="presentation" style="margin:0 0 16px 0">
+    <tr>
+      <td style="padding-right:10px">${btnNavy(url, "Open the files")}</td>
+      <td>${btnOutline(url, "View transfer")}</td>
+    </tr>
+    </table>
+    <p style="font-size:12.5px;color:${MUTED};font-family:${FONT};margin:0">Sent once, and only if no one opens the files within 2 business hours. The customer already has a confirmation.</p>`;
 
   const footer = `${COMMON_FOOTER}
-    <p class="why">You got this because you lead Customer Service.</p>`;
+    <p style="margin:8px 0 0 0;font-size:11px;color:${MUTED};font-family:${FONT}">You got this because you lead Customer Service.</p>`;
 
   return emailWrap(body, footer);
 }
@@ -312,57 +386,63 @@ function dailySummaryHtml(rows, dateStr, appUrl) {
   const totalFiles = rows.reduce((s, r) => s + r.fileCount, 0);
   const notOpened = rows.filter((r) => !r.opened).length;
 
+  const statCell = (num, label, warn = false) =>
+    `<td width="33%" style="padding:0 5px 0 0">
+      <table width="100%" cellpadding="0" cellspacing="0" border="0" role="presentation" style="border:1px solid ${warn ? "#F0D9A6" : LINE};border-radius:10px;background-color:${warn ? "#FFF7E6" : "#ffffff"}" bgcolor="${warn ? "#FFF7E6" : "#ffffff"}">
+      <tr><td style="padding:12px 14px">
+        <div style="font-family:Georgia,serif;font-weight:700;font-size:30px;line-height:1;color:${warn ? "#B7791F" : NAVY}">${num}</div>
+        <div style="font-size:12.5px;color:${MUTED};margin-top:6px;font-family:${FONT}">${label}</div>
+      </td></tr>
+      </table>
+    </td>`;
+
   const tableRows = rows.map((r) => {
     const timeStr = new Date(r.completedAt).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" });
-    const statusPill = r.opened
-      ? `<span style="display:inline-flex;font-size:11px;font-weight:600;padding:2px 10px;border-radius:999px;background:#F0F8EA;color:#4E8A2A">Opened</span>`
-      : `<span style="display:inline-flex;font-size:11px;font-weight:600;padding:2px 10px;border-radius:999px;border:1px solid #F0D9A6;background:#FFF7E6;color:#B7791F">Not opened</span>`;
-    const rowStyle = r.opened ? "" : ' style="background:#FFF7E6"';
-    return `<tr${rowStyle}>
-      <td style="padding:9px 6px;border-bottom:1px solid #E2E7EE;color:#5F6B7A;white-space:nowrap;font-size:12.5px">${escapeHtml(timeStr)}</td>
-      <td style="padding:9px 6px;border-bottom:1px solid #E2E7EE;font-weight:600;font-size:12.5px">${escapeHtml(r.company || "")}</td>
-      <td style="padding:9px 6px;border-bottom:1px solid #E2E7EE;font-size:12.5px">${escapeHtml(r.title || "")}</td>
-      <td style="padding:9px 6px;border-bottom:1px solid #E2E7EE;text-align:center;font-size:12.5px">${r.fileCount}</td>
-      <td style="padding:9px 6px;border-bottom:1px solid #E2E7EE;font-size:12.5px">${escapeHtml(r.contactName || "")}</td>
-      <td style="padding:9px 6px;border-bottom:1px solid #E2E7EE">${statusPill}</td>
+    const pill = r.opened
+      ? `<span style="font-size:11px;font-weight:600;padding:2px 10px;border-radius:999px;background-color:#F0F8EA;color:#4E8A2A;font-family:${FONT}" bgcolor="#F0F8EA">Opened</span>`
+      : `<span style="font-size:11px;font-weight:600;padding:2px 10px;border-radius:999px;border:1px solid #F0D9A6;background-color:#FFF7E6;color:#B7791F;font-family:${FONT}" bgcolor="#FFF7E6">Not opened</span>`;
+    const rowBg = r.opened ? "#ffffff" : "#FFF7E6";
+    return `<tr bgcolor="${rowBg}" style="background-color:${rowBg}">
+      <td style="padding:9px 6px;border-bottom:1px solid ${LINE};color:${MUTED};white-space:nowrap;font-size:12.5px;font-family:${FONT}">${escapeHtml(timeStr)}</td>
+      <td style="padding:9px 6px;border-bottom:1px solid ${LINE};font-weight:600;font-size:12.5px;font-family:${FONT}">${escapeHtml(r.company || "")}</td>
+      <td style="padding:9px 6px;border-bottom:1px solid ${LINE};font-size:12.5px;font-family:${FONT}">${escapeHtml(r.title || "")}</td>
+      <td style="padding:9px 6px;border-bottom:1px solid ${LINE};text-align:center;font-size:12.5px;font-family:${FONT}">${r.fileCount}</td>
+      <td style="padding:9px 6px;border-bottom:1px solid ${LINE};font-size:12.5px;font-family:${FONT}">${escapeHtml(r.contactName || "")}</td>
+      <td style="padding:9px 6px;border-bottom:1px solid ${LINE}">${pill}</td>
     </tr>`;
   }).join("");
 
-  const thStyle = "text-align:left;font-size:10.5px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:#5F6B7A;padding:6px;border-bottom:1px solid #E2E7EE";
+  const th = `text-align:left;font-size:10.5px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:${MUTED};padding:6px;border-bottom:1px solid ${LINE};font-family:${FONT}`;
 
   const body = `
-    <div class="em-h" style="font-size:24px;margin-bottom:4px">Today's file uploads</div>
-    <p style="font-size:13px;color:#5F6B7A;margin:0 0 18px">${escapeHtml(dateStr)}</p>
-    <div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin:0 0 20px">
-      <div style="border:1px solid #E2E7EE;border-radius:10px;padding:12px 14px;background:#fff">
-        <div style="font-family:Georgia,serif;font-weight:700;font-size:30px;line-height:1;color:#0E3760">${total}</div>
-        <div style="font-size:12.5px;color:#5F6B7A;margin-top:6px">Sends</div>
-      </div>
-      <div style="border:1px solid #E2E7EE;border-radius:10px;padding:12px 14px;background:#fff">
-        <div style="font-family:Georgia,serif;font-weight:700;font-size:30px;line-height:1;color:#0E3760">${totalFiles}</div>
-        <div style="font-size:12.5px;color:#5F6B7A;margin-top:6px">Files</div>
-      </div>
-      <div style="border:1px solid ${notOpened > 0 ? "#F0D9A6" : "#E2E7EE"};border-radius:10px;padding:12px 14px;background:${notOpened > 0 ? "#FFF7E6" : "#fff"}">
-        <div style="font-family:Georgia,serif;font-weight:700;font-size:30px;line-height:1;color:${notOpened > 0 ? "#B7791F" : "#0E3760"}">${notOpened}</div>
-        <div style="font-size:12.5px;color:#5F6B7A;margin-top:6px">Not opened</div>
-      </div>
-    </div>
-    <table style="width:100%;border-collapse:collapse;font-size:12.5px;margin:0 0 20px">
+    <h1 style="font-family:Georgia,serif;font-weight:700;color:${NAVY};font-size:24px;line-height:1.15;margin:0 0 4px 0">Today's file uploads</h1>
+    <p style="font-size:13px;color:${MUTED};margin:0 0 18px 0;font-family:${FONT}">${escapeHtml(dateStr)}</p>
+
+    <table width="100%" cellpadding="0" cellspacing="0" border="0" role="presentation" style="margin:0 0 20px 0">
+    <tr>
+      ${statCell(total, "Sends")}
+      ${statCell(totalFiles, "Files")}
+      ${statCell(notOpened, "Not opened", notOpened > 0)}
+    </tr>
+    </table>
+
+    <table width="100%" cellpadding="0" cellspacing="0" border="0" role="presentation" style="font-size:12.5px;margin:0 0 20px 0">
       <thead><tr>
-        <th style="${thStyle}">Time</th>
-        <th style="${thStyle}">Customer</th>
-        <th style="${thStyle}">Job</th>
-        <th style="${thStyle};text-align:center">Files</th>
-        <th style="${thStyle}">Contact</th>
-        <th style="${thStyle}">Status</th>
+        <th style="${th}">Time</th>
+        <th style="${th}">Customer</th>
+        <th style="${th}">Job</th>
+        <th style="${th};text-align:center">Files</th>
+        <th style="${th}">Contact</th>
+        <th style="${th}">Status</th>
       </tr></thead>
       <tbody>${tableRows}</tbody>
     </table>
-    <p style="margin:0 0 16px"><a href="${escapeHtml(appUrl)}" style="display:inline-block;padding:12px 22px;border-radius:8px;background:#0E3760;color:#fff;font-weight:600;font-size:15px;text-decoration:none">See all uploads</a></p>
-    <p style="font-size:12.5px;color:#5F6B7A">Optional. Turn it off, or change who gets it, in settings.</p>`;
+
+    ${btnNavy(appUrl, "See all uploads")}
+    <p style="font-size:12.5px;color:${MUTED};margin:12px 0 0 0;font-family:${FONT}">Optional. Turn it off, or change who gets it, in settings.</p>`;
 
   const footer = `${COMMON_FOOTER}
-    <p class="why">Sent at 5:00 PM on weekdays to the people on the summary list.</p>`;
+    <p style="margin:8px 0 0 0;font-size:11px;color:${MUTED};font-family:${FONT}">Sent at 5:00 PM on weekdays to the people on the summary list.</p>`;
 
   return emailWrap(body, footer);
 }
@@ -393,7 +473,6 @@ export async function sendTransferEmails(client, transfer, reminder = false) {
 
   let success = true;
 
-  // 1. Customer confirmation (to sender)
   if (!reminder) {
     const key = `delivery-customer-${hashToken(transfer.sender_email).slice(0, 32)}`;
     if (results[key] !== "sent") {
@@ -411,7 +490,6 @@ export async function sendTransferEmails(client, transfer, reminder = false) {
     }
   }
 
-  // 2. Internal alert (to Aspen contact + internal inbox)
   const internalRecipients = [...new Set([...recipientEmails, ...settings.internalEmails])].filter(Boolean);
   for (const recipient of internalRecipients) {
     const kind = reminder ? "reminder" : "internal";
