@@ -9,6 +9,24 @@ export function publicUrl(id) {
   return `${config().appUrl}/transfer/${id}`;
 }
 
+export function dashboardUrl(origin = config().appUrl) {
+  return `${origin}/dashboard`;
+}
+
+export function dashboardUploadsUrl(origin = config().appUrl) {
+  return `${origin}/dashboard?tab=files`;
+}
+
+export function uploadRequestUrl(contact, job, origin = config().appUrl) {
+  const params = new URLSearchParams({
+    contact: contact.id || "",
+    job: job.number || "",
+    title: job.title || "",
+    company: job.company || "",
+  });
+  return `${origin}/?${params}`;
+}
+
 async function graphToken() {
   if (!credential) credential = new DefaultAzureCredential({ managedIdentityClientId: process.env.AZURE_CLIENT_ID || undefined });
   const t = await credential.getToken("https://graph.microsoft.com/.default");
@@ -284,7 +302,7 @@ function internalHtml(transfer, files, receipt, contactName) {
 
 function uploadRequestHtml(contact, customer, job, appUrl) {
   const initials = contact.name.split(" ").map((w) => w[0]).join("").slice(0, 2).toUpperCase();
-  const prefilledUrl = `${appUrl}/?contact=${encodeURIComponent(contact.id)}&job=${encodeURIComponent(job.number || "")}&title=${encodeURIComponent(job.title)}&company=${encodeURIComponent(job.company || "")}`;
+  const prefilledUrl = uploadRequestUrl(contact, job, appUrl);
   const expiryStr = job.expiresAt ? new Date(job.expiresAt).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }) : "";
 
   const body = `
@@ -407,7 +425,7 @@ function dailySummaryHtml(rows, dateStr, appUrl) {
     return `<tr bgcolor="${rowBg}" style="background-color:${rowBg}">
       <td style="padding:9px 6px;border-bottom:1px solid ${LINE};color:${MUTED};white-space:nowrap;font-size:12.5px;font-family:${FONT}">${escapeHtml(timeStr)}</td>
       <td style="padding:9px 6px;border-bottom:1px solid ${LINE};font-weight:600;font-size:12.5px;font-family:${FONT}">${escapeHtml(r.company || "")}</td>
-      <td style="padding:9px 6px;border-bottom:1px solid ${LINE};font-size:12.5px;font-family:${FONT}">${escapeHtml(r.title || "")}</td>
+      <td style="padding:9px 6px;border-bottom:1px solid ${LINE};font-size:12.5px;font-family:${FONT}">${r.id ? `<a href="${escapeHtml(`${appUrl}/transfer/${r.id}`)}" style="color:${NAVY};font-weight:600;text-decoration:none">${escapeHtml(r.title || "Open transfer")}</a>` : escapeHtml(r.title || "")}</td>
       <td style="padding:9px 6px;border-bottom:1px solid ${LINE};text-align:center;font-size:12.5px;font-family:${FONT}">${r.fileCount}</td>
       <td style="padding:9px 6px;border-bottom:1px solid ${LINE};font-size:12.5px;font-family:${FONT}">${escapeHtml(r.contactName || "")}</td>
       <td style="padding:9px 6px;border-bottom:1px solid ${LINE}">${pill}</td>
@@ -440,7 +458,7 @@ function dailySummaryHtml(rows, dateStr, appUrl) {
       <tbody>${tableRows}</tbody>
     </table>
 
-    ${btnNavy(appUrl, "See all uploads")}
+    ${btnNavy(dashboardUploadsUrl(appUrl), "See all uploads")}
     <p style="font-size:12.5px;color:${MUTED};margin:12px 0 0 0;font-family:${FONT}">Optional. Turn it off, or change who gets it, in settings.</p>`;
 
   const footer = `${COMMON_FOOTER}
@@ -525,8 +543,9 @@ export async function sendTransferEmails(client, transfer, reminder = false) {
 export async function sendUploadRequest({ contact, customer, job }) {
   const settings = config();
   const subject = `${contact.name.split(" ")[0]} from Signature Aspen needs files${job.title ? ` for ${job.title}` : ""}`;
+  const uploadUrl = uploadRequestUrl(contact, job, settings.appUrl);
   const html = uploadRequestHtml(contact, customer, job, settings.appUrl);
-  const text = `Hi ${customer.firstName || customer.name || "there"},\n\n${job.message || ""}\n\nSend your files: ${settings.appUrl}/?job=${encodeURIComponent(job.number || "")}\n\nLink active until ${job.expiresAt ? new Date(job.expiresAt).toLocaleDateString() : ""}`;
+  const text = `Hi ${customer.firstName || customer.name || "there"},\n\n${job.message || ""}\n\nSend your files: ${uploadUrl}\n\nLink active until ${job.expiresAt ? new Date(job.expiresAt).toLocaleDateString() : ""}`;
   await sendOne(customer.email, subject, html, text, contact.email);
 }
 
@@ -622,14 +641,14 @@ export async function sendDailySummary(database) {
     const contactName = contactEmail
       ? contactEmail.split("@")[0].replace(/[._-]/g, " ").replace(/\b\w/g, (c) => c.toUpperCase())
       : "";
-    return { company: r.company, title: r.title, completedAt: r.completed_at, fileCount: r.file_count, contactName, opened: r.opened };
+    return { id: r.id, company: r.company, title: r.title, completedAt: r.completed_at, fileCount: r.file_count, contactName, opened: r.opened };
   });
 
   const totalFiles = summaryRows.reduce((s, r) => s + r.fileCount, 0);
   const dateStr = today.toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric", year: "numeric" });
   const subject = `Today's file uploads: ${summaryRows.length} send${summaryRows.length !== 1 ? "s" : ""}, ${totalFiles} file${totalFiles !== 1 ? "s" : ""}`;
   const html = dailySummaryHtml(summaryRows, dateStr, settings.appUrl);
-  const text = `Today's uploads: ${summaryRows.length} sends, ${totalFiles} files.\n\n${summaryRows.map((r) => `${r.company} — ${r.title} (${r.fileCount} files, ${r.opened ? "opened" : "NOT OPENED"})`).join("\n")}`;
+  const text = `Today's uploads: ${summaryRows.length} sends, ${totalFiles} files.\n\n${summaryRows.map((r) => `${r.company} — ${r.title} (${r.fileCount} files, ${r.opened ? "opened" : "NOT OPENED"})\n${publicUrl(r.id)}`).join("\n\n")}\n\nSee all uploads: ${dashboardUploadsUrl(settings.appUrl)}`;
 
   let sent = 0;
   for (const to of settings.summaryEmails) {

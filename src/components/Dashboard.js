@@ -80,8 +80,10 @@ function TransferList({ transfers, action, onShare, employee, onAssign, onLocal,
   ));
 }
 
-function WorkspaceBody({ employee }) {
-  const [tab, setTab] = useState("overview");
+const DASHBOARD_TABS = new Set(["overview", "calendar", "files", "browse", "upload"]);
+
+function WorkspaceBody({ employee, initialTab = "overview" }) {
+  const [tab, setTab] = useState(DASHBOARD_TABS.has(initialTab) ? initialTab : "overview");
   const [query, setQuery] = useState("");
   const [page, setPage] = useState(1);
   const [result, setResult] = useState(null);
@@ -376,7 +378,7 @@ function WorkspaceBody({ employee }) {
   );
 }
 
-export default function Dashboard({ employee = null }) {
+export default function Dashboard({ employee = null, initialTab = "overview" }) {
   const [session, setSession] = useState(employee ? { enabled: true, employee } : { enabled: true, employee: null });
   const [error, setError] = useState("");
   useEffect(() => {
@@ -409,7 +411,7 @@ export default function Dashboard({ employee = null }) {
   return (
     <>
       <EmployeeHeader employee={session.employee} current="dashboard" />
-      <WorkspaceBody employee={session.employee} />
+      <WorkspaceBody employee={session.employee} initialTab={initialTab} />
     </>
   );
 }

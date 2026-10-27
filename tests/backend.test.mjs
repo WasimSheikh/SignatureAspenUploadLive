@@ -93,6 +93,17 @@ test("API errors are safe and all JSON responses prohibit caching", async () => 
   }
 });
 
+test("staff and customer email links go to dashboard, transfer, or prefilled upload", async () => {
+  const { dashboardUrl, dashboardUploadsUrl, publicUrl, uploadRequestUrl } = await import("../src/lib/email.js");
+  assert.equal(dashboardUrl("https://files.example"), "https://files.example/dashboard");
+  assert.equal(dashboardUploadsUrl("https://files.example"), "https://files.example/dashboard?tab=files");
+  assert.match(publicUrl("TransferId012345678901234567890"), /\/transfer\/TransferId012345678901234567890$/);
+  assert.equal(
+    uploadRequestUrl({ id: "jturner" }, { number: "1042", title: "Trade show", company: "Acme" }, "https://files.example"),
+    "https://files.example/?contact=jturner&job=1042&title=Trade+show&company=Acme",
+  );
+});
+
 test("new transfers store files under a Houston calendar date path", () => {
   const transferId = "A".repeat(32), fileId = "B".repeat(32);
   assert.equal(storage.dateObjectKey(transferId, fileId, new Date("2026-10-27T18:00:00Z")),
