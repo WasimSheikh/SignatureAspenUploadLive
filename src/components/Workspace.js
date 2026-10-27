@@ -154,7 +154,7 @@ export default function Workspace() {
         <Brand />
         <nav className="site-nav" aria-label="Site">
           <a href="https://signatureaspen.com/services">Services</a>
-          <a href="https://signatureaspen.com/quote">Request a Quote</a>
+          <a href="https://signatureaspen.com/request-a-quote/">Request a Quote</a>
           <a href="/" className="on" aria-current="page">Upload Art</a>
           <a href="https://signatureaspen.com/contact">Contact Us</a>
         </nav>
