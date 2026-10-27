@@ -239,10 +239,8 @@ export async function sendTransferEmails(client, transfer, reminder = false) {
   const results = { ...transfer.email_results };
   const receipt = receiptNum(transfer.id);
 
-  // Derive contact name from recipient email list
   const recipientEmails = Array.isArray(transfer.recipient_emails) ? transfer.recipient_emails : JSON.parse(transfer.recipient_emails || "[]");
   const contactEmail = recipientEmails[0] || settings.internalEmails[0] || "";
-  // Try to get a friendly name from the email local part
   const contactName = contactEmail
     ? contactEmail.split("@")[0].replace(/[._-]/g, " ").replace(/\b\w/g, (c) => c.toUpperCase())
     : "the Aspen team";

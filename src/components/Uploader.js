@@ -7,13 +7,13 @@ const STORAGE_KEY = "design-delivery-upload";
 const ALLOWED = /\.(psd|ai|pdf|zip|tiff?)$/i;
 const MAX_BYTES = 20 * 1024 ** 3;
 
-// Update these with your real team members and their email addresses
+// Update with your real team — name shown in picker, email used for routing and Reply-To
 const CONTACTS = [
-  { id: "cs",     name: "Customer Service",           role: "",                email: "uploads@signatureaspen.com" },
-  { id: "dana",   name: "Dana Whitfield",             role: "Account Manager", email: "dwhitfield@signatureaspen.com" },
-  { id: "marcus", name: "Marcus Lee",                 role: "Account Manager", email: "mlee@signatureaspen.com" },
-  { id: "priya",  name: "Priya Shah",                 role: "Customer Service",email: "pshah@signatureaspen.com" },
-  { id: "tom",    name: "Tom Alvarez",                role: "Prepress",        email: "talvarez@signatureaspen.com" },
+  { id: "cs",     name: "Not sure",      label: "Not sure — send to Customer Service", role: "", email: "uploads@signatureaspen.com" },
+  { id: "wasim",  name: "Wasim Sheikh",  role: "Account Manager", email: "wasim@aspenimg.com" },
+  { id: "marcus", name: "Marcus Lee",    role: "Account Manager", email: "mlee@signatureaspen.com" },
+  { id: "priya",  name: "Priya Shah",    role: "Customer Service",email: "pshah@signatureaspen.com" },
+  { id: "tom",    name: "Tom Alvarez",   role: "Prepress",        email: "talvarez@signatureaspen.com" },
 ];
 
 const formatSize = (bytes) => bytes < 1024 ** 2
@@ -390,7 +390,7 @@ export default function Uploader({ employee = null, onComplete }) {
                     <option value="" disabled>Choose your contact</option>
                     {CONTACTS.map((c) => (
                       <option key={c.id} value={c.id}>
-                        {c.id === "cs" ? "Not sure — send to Customer Service" : `${c.name}${c.role ? ` (${c.role})` : ""}`}
+                        {c.label || (c.role ? `${c.name} — ${c.role}` : c.name)}
                       </option>
                     ))}
                   </select>
