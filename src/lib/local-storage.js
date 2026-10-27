@@ -16,8 +16,11 @@ function stagingDir(file) {
   return path.join(root(), "staging", file.transfer_id, file.id, file.upload_id.slice(PREFIX.length));
 }
 
+const OBJECT_KEY = /^transfers\/(?:\d{4}\/\d{2}\/\d{2}\/)?[A-Za-z0-9_-]{32}\/[A-Za-z0-9_-]{32}$/;
+
 function finalPath(file) {
-  return path.join(root(), "transfers", file.transfer_id, file.id);
+  if (!OBJECT_KEY.test(file.object_key)) fail(409, "Invalid storage path.");
+  return path.join(root(), ...file.object_key.split("/"));
 }
 
 export function requireLocal(file) {

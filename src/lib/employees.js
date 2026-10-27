@@ -75,6 +75,359 @@ export const employeeTransfers = employeeEndpoint(async (request) => {
   }), page, hasMore: rows.length > 20 });
 });
 
+const ACCESS_SQL = `AND ($1::boolean OR EXISTS (
+      SELECT 1 FROM transfer_employee_access a WHERE a.transfer_id = t.id AND a.employee_id = $2::uuid
+    ))`;
+
+const MONTHS = ["January", "February", "March", "April", "May", "June",
+  "July", "August", "September", "October", "November", "December"];
+const COMPANY_TZ = "America/Chicago";
+const GROUPS = new Set(["folder", "date", "company"]);
+
+function chicagoDate(at) {
+  if (!at) return "";
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: COMPANY_TZ, year: "numeric", month: "2-digit", day: "2-digit",
+  }).format(new Date(at));
+}
+
+function dateLabel(ymd) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(ymd)) return "Unknown date";
+  const [year, month, day] = ymd.split("-").map(Number);
+  return new Date(Date.UTC(year, month - 1, day)).toLocaleDateString("en-US", {
+    weekday: "long", month: "long", day: "numeric", year: "numeric", timeZone: "UTC",
+  });
+}
+
+function browseGroup(raw) {
+  const group = String(raw || "folder").trim();
+  if (!GROUPS.has(group)) fail(400, "Invalid group.");
+  return group;
+}
+
+function browseQuery(raw) {
+  const query = String(raw || "").trim();
+  if (query.length > 200) fail(400, "Search is too long.");
+  return query;
+}
+
+function browseKey(group, raw) {
+  const key = String(raw ?? "").trim();
+  if (!key) return "";
+  if (key.length > 200 || key.includes("\0") || key.includes("\\") || key.includes("..")) fail(400, "Invalid group key.");
+  if (group === "date") {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(key)) fail(400, "Invalid date.");
+    const [year, month, day] = key.split("-").map(Number);
+    const check = new Date(Date.UTC(year, month - 1, day));
+    if (check.getUTCFullYear() !== year || check.getUTCMonth() !== month - 1 || check.getUTCDate() !== day) {
+      fail(400, "Invalid date.");
+    }
+  }
+  return key;
+}
+
+export function matchesBrowseQuery(row, query) {
+  if (!query) return true;
+  const needle = query.toLowerCase();
+  return [row.name, row.company, row.title, row.sender_email].some((value) =>
+    String(value || "").toLowerCase().includes(needle));
+}
+
+function asFile(row) {
+  return {
+    type: "file", id: row.id, transferId: row.transfer_id, name: row.name,
+    size: Number(row.size), modified: row.completed_at ? new Date(row.completed_at).toISOString() : null,
+    senderEmail: row.sender_email, company: row.company, title: row.title,
+  };
+}
+
+function collectGroups(rows, keyOf, labelOf, newestFirst = false) {
+  const groups = new Map();
+  for (const row of rows) {
+    const name = keyOf(row);
+    const modified = row.completed_at ? new Date(row.completed_at).toISOString() : null;
+    let folder = groups.get(name);
+    if (!folder) {
+      folder = {
+        type: "folder", name, path: name, label: labelOf(name, row),
+        fileCount: 0, totalSize: 0, modified, transferId: null, company: "", title: "",
+      };
+      groups.set(name, folder);
+    }
+    folder.fileCount += 1;
+    folder.totalSize += Number(row.size);
+    if (modified && (!folder.modified || modified > folder.modified)) folder.modified = modified;
+  }
+  return [...groups.values()].sort((a, b) => newestFirst
+    ? b.name.localeCompare(a.name, undefined, { numeric: true })
+    : a.label.localeCompare(b.label, undefined, { numeric: true, sensitivity: "base" }));
+}
+
+function browsePath(raw) {
+  const trimmed = String(raw || "transfers").trim().replace(/^\/+|\/+$/g, "");
+  if (!trimmed) return "transfers";
+  if (trimmed.includes("..") || trimmed.includes("\\") || trimmed.includes("\0")) fail(400, "Invalid path.");
+  const parts = trimmed.split("/").filter(Boolean);
+  if (parts[0] !== "transfers" || parts.length > 5) fail(400, "Invalid path.");
+  if (parts.some((part) => !/^[A-Za-z0-9._-]{1,64}$/.test(part))) fail(400, "Invalid path.");
+  return parts.join("/");
+}
+
+function folderLabel(path, name, transfer) {
+  const parts = path.split("/");
+  if (parts.length === 3 && /^\d{2}$/.test(name)) return MONTHS[Number(name) - 1] || name;
+  if (transfer && name === transfer.id) return transfer.company || transfer.title || "Transfer";
+  return name;
+}
+
+function crumbLabel(path, transferById) {
+  const parts = path.split("/");
+  const name = parts[parts.length - 1];
+  if (parts.length === 3 && /^\d{2}$/.test(name)) return MONTHS[Number(name) - 1] || name;
+  if (parts.length >= 2 && transferById.has(name)) {
+    const transfer = transferById.get(name);
+    return transfer.company || transfer.title || "Transfer";
+  }
+  return name;
+}
+
+export function listBrowseChildren(rows, path) {
+  const prefix = `${path}/`;
+  const folders = new Map();
+  const files = [];
+  for (const row of rows) {
+    const key = row.object_key;
+    if (!key.startsWith(prefix)) continue;
+    const rest = key.slice(prefix.length);
+    const slash = rest.indexOf("/");
+    const modified = row.completed_at ? new Date(row.completed_at).toISOString() : null;
+    if (slash === -1) {
+      files.push({
+        type: "file", id: row.id, transferId: row.transfer_id, name: row.name,
+        size: Number(row.size), modified, senderEmail: row.sender_email,
+        company: row.company, title: row.title,
+      });
+      continue;
+    }
+    const name = rest.slice(0, slash);
+    const childPath = `${path}/${name}`;
+    let folder = folders.get(name);
+    if (!folder) {
+      const isTransfer = name === row.transfer_id;
+      folder = {
+        type: "folder", name, path: childPath,
+        label: folderLabel(childPath, name, isTransfer ? { id: row.transfer_id, company: row.company, title: row.title } : null),
+        fileCount: 0, totalSize: 0, modified,
+        transferId: isTransfer ? row.transfer_id : null,
+        company: isTransfer ? row.company : "",
+        title: isTransfer ? row.title : "",
+      };
+      folders.set(name, folder);
+    }
+    folder.fileCount += 1;
+    folder.totalSize += Number(row.size);
+    if (modified && (!folder.modified || modified > folder.modified)) folder.modified = modified;
+  }
+  const compare = (a, b) => a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: "base" });
+  return {
+    folders: [...folders.values()].sort(compare),
+    files: files.sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: "base" })),
+  };
+}
+
+export const employeeBrowse = employeeEndpoint(async (request) => {
+  const client = employeeDatabase();
+  const employee = await requireEmployee(request, client);
+  const params = new URL(request.url).searchParams;
+  const group = browseGroup(params.get("group"));
+  const query = browseQuery(params.get("q"));
+  const key = browseKey(group, params.get("key"));
+  const { rows } = await client.query(`SELECT f.id, f.transfer_id, f.name, f.size, f.object_key,
+      t.title, t.company, t.sender_email, t.completed_at
+    FROM transfer_files f
+    JOIN transfers t ON t.id = f.transfer_id
+    WHERE t.status = 'complete' AND t.expires_at > now()
+    AND f.object_key LIKE 'transfers/%'
+    ${ACCESS_SQL}
+    ORDER BY f.object_key LIMIT 5000`, [employee.admin, employee.id]);
+  const visible = query ? rows.filter((row) => matchesBrowseQuery(row, query)) : rows;
+  const compareFiles = (a, b) => a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: "base" });
+
+  if (group === "date") {
+    const dateOf = (row) => chicagoDate(row.completed_at);
+    if (!key) {
+      const folders = collectGroups(visible, dateOf, (name) => dateLabel(name), true);
+      return employeeJson({
+        group, query, key: "", path: "", parent: "",
+        crumbs: [{ path: "", label: "By date" }],
+        folders, files: [],
+      });
+    }
+    const files = visible.filter((row) => dateOf(row) === key).map(asFile).sort(compareFiles);
+    return employeeJson({
+      group, query, key, path: key, parent: "",
+      crumbs: [{ path: "", label: "By date" }, { path: key, label: dateLabel(key) }],
+      folders: [], files,
+    });
+  }
+
+  if (group === "company") {
+    const companyOf = (row) => (row.company || "").trim() || "Untitled company";
+    if (!key) {
+      const folders = collectGroups(visible, companyOf, (name) => name);
+      return employeeJson({
+        group, query, key: "", path: "", parent: "",
+        crumbs: [{ path: "", label: "By company" }],
+        folders, files: [],
+      });
+    }
+    const files = visible.filter((row) => companyOf(row) === key).map(asFile).sort(compareFiles);
+    return employeeJson({
+      group, query, key, path: key, parent: "",
+      crumbs: [{ path: "", label: "By company" }, { path: key, label: key }],
+      folders: [], files,
+    });
+  }
+
+  const path = browsePath(params.get("path"));
+  const transferById = new Map();
+  for (const row of visible) {
+    if (!transferById.has(row.transfer_id)) {
+      transferById.set(row.transfer_id, { id: row.transfer_id, company: row.company, title: row.title });
+    }
+  }
+  const parts = path.split("/");
+  const crumbs = parts.map((_, index) => {
+    const crumbPath = parts.slice(0, index + 1).join("/");
+    return { path: crumbPath, label: crumbLabel(crumbPath, transferById) };
+  });
+  const { folders, files } = listBrowseChildren(visible, path);
+  const parent = parts.length > 1 ? parts.slice(0, -1).join("/") : "";
+  return employeeJson({ group, query, key: "", path, parent, crumbs, folders, files });
+});
+
+function sqlDate(value) {
+  if (!value) return "";
+  if (typeof value === "string") return value.slice(0, 10);
+  return new Date(value).toISOString().slice(0, 10);
+}
+
+function parseMonth(raw) {
+  const text = String(raw || "").trim() || chicagoDate(new Date()).slice(0, 7);
+  if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(text)) fail(400, "Invalid month.");
+  const year = Number(text.slice(0, 4));
+  const month = Number(text.slice(5, 7));
+  if (year < 2000 || year > 2100) fail(400, "Invalid month.");
+  return { year, month, key: text };
+}
+
+function parseDay(raw) {
+  const key = String(raw || "").trim();
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(key)) fail(400, "Invalid date.");
+  const [year, month, day] = key.split("-").map(Number);
+  const check = new Date(Date.UTC(year, month - 1, day));
+  if (check.getUTCFullYear() !== year || check.getUTCMonth() !== month - 1 || check.getUTCDate() !== day) {
+    fail(400, "Invalid date.");
+  }
+  if (year < 2000 || year > 2100) fail(400, "Invalid date.");
+  return key;
+}
+
+async function filesForTransfers(client, rows) {
+  const ids = rows.map((row) => row.id);
+  const files = ids.length ? (await client.query(`SELECT id,transfer_id,name,size FROM transfer_files
+    WHERE transfer_id = ANY($1::text[]) ORDER BY ordinal`, [ids])).rows : [];
+  return rows.map((row) => {
+    const transferFiles = files.filter((file) => file.transfer_id === row.id);
+    return {
+      id: row.id, title: row.title, company: row.company, senderEmail: row.sender_email,
+      expiresAt: new Date(row.expires_at).toISOString(),
+      completedAt: row.completed_at ? new Date(row.completed_at).toISOString() : null,
+      totalSize: transferFiles.reduce((sum, file) => sum + Number(file.size), 0),
+      files: transferFiles.map((file) => ({ id: file.id, name: file.name, size: Number(file.size) })),
+      canShare: true,
+    };
+  });
+}
+
+export const employeeDashboard = employeeEndpoint(async (request) => {
+  const client = employeeDatabase();
+  const employee = await requireEmployee(request, client);
+  const { year, month, key } = parseMonth(new URL(request.url).searchParams.get("month"));
+  const access = [employee.admin, employee.id];
+  const monthStart = `${key}-01`;
+  const [statsResult, filesResult, recentResult, companiesResult, daysResult] = await Promise.all([
+    client.query(`SELECT count(*)::int AS transfers,
+        count(*) FILTER (WHERE (t.completed_at AT TIME ZONE '${COMPANY_TZ}')::date
+          = (now() AT TIME ZONE '${COMPANY_TZ}')::date)::int AS today,
+        count(*) FILTER (WHERE date_trunc('month', t.completed_at AT TIME ZONE '${COMPANY_TZ}')
+          = date_trunc('month', now() AT TIME ZONE '${COMPANY_TZ}'))::int AS this_month,
+        count(*) FILTER (WHERE t.expires_at <= now() + interval '7 days')::int AS expiring,
+        count(DISTINCT nullif(btrim(t.company), ''))::int AS companies
+      FROM transfers t WHERE t.status = 'complete' AND t.expires_at > now()
+      ${ACCESS_SQL}`, access),
+    client.query(`SELECT count(f.id)::int AS files, coalesce(sum(f.size), 0)::bigint AS total_size
+      FROM transfer_files f JOIN transfers t ON t.id = f.transfer_id
+      WHERE t.status = 'complete' AND t.expires_at > now()
+      ${ACCESS_SQL}`, access),
+    client.query(`SELECT t.id, t.title, t.company, t.sender_email, t.expires_at, t.completed_at
+      FROM transfers t WHERE t.status = 'complete' AND t.expires_at > now()
+      ${ACCESS_SQL}
+      ORDER BY t.completed_at DESC NULLS LAST, t.id DESC LIMIT 8`, access),
+    client.query(`SELECT coalesce(nullif(btrim(t.company), ''), 'Untitled company') AS company,
+        count(*)::int AS transfers
+      FROM transfers t WHERE t.status = 'complete' AND t.expires_at > now()
+      ${ACCESS_SQL}
+      GROUP BY 1 ORDER BY transfers DESC, company ASC LIMIT 8`, access),
+    client.query(`SELECT (t.completed_at AT TIME ZONE '${COMPANY_TZ}')::date AS calendar_days,
+        count(DISTINCT t.id)::int AS transfer_count,
+        count(f.id)::int AS file_count,
+        coalesce(sum(f.size), 0)::bigint AS total_size
+      FROM transfers t JOIN transfer_files f ON f.transfer_id = t.id
+      WHERE t.status = 'complete' AND t.expires_at > now()
+      ${ACCESS_SQL}
+      AND (t.completed_at AT TIME ZONE '${COMPANY_TZ}') >= $3::date
+      AND (t.completed_at AT TIME ZONE '${COMPANY_TZ}') < ($3::date + interval '1 month')
+      GROUP BY 1 ORDER BY 1`, [...access, monthStart]),
+  ]);
+  const stats = statsResult.rows[0] || {};
+  const fileStats = filesResult.rows[0] || {};
+  return employeeJson({
+    timezone: COMPANY_TZ,
+    today: chicagoDate(new Date()),
+    month: { year, month, key, label: `${MONTHS[month - 1]} ${year}` },
+    stats: {
+      transfers: Number(stats.transfers || 0),
+      files: Number(fileStats.files || 0),
+      totalSize: Number(fileStats.total_size || 0),
+      companies: Number(stats.companies || 0),
+      today: Number(stats.today || 0),
+      thisMonth: Number(stats.this_month || 0),
+      expiring: Number(stats.expiring || 0),
+    },
+    recent: await filesForTransfers(client, recentResult.rows),
+    companies: companiesResult.rows.map((row) => ({ company: row.company, transfers: Number(row.transfers) })),
+    days: daysResult.rows.map((row) => ({
+      date: sqlDate(row.calendar_days),
+      transferCount: Number(row.transfer_count),
+      fileCount: Number(row.file_count),
+      totalSize: Number(row.total_size),
+    })),
+  });
+});
+
+export const employeeCalendar = employeeEndpoint(async (request) => {
+  const client = employeeDatabase();
+  const employee = await requireEmployee(request, client);
+  const date = parseDay(new URL(request.url).searchParams.get("date"));
+  const { rows } = await client.query(`SELECT t.id, t.title, t.company, t.sender_email, t.expires_at, t.completed_at
+    FROM transfers t WHERE t.status = 'complete' AND t.expires_at > now()
+    ${ACCESS_SQL}
+    AND (t.completed_at AT TIME ZONE '${COMPANY_TZ}')::date = $3::date
+    ORDER BY t.completed_at DESC, t.id DESC LIMIT 200`, [employee.admin, employee.id, date]);
+  return employeeJson({ date, label: dateLabel(date), transfers: await filesForTransfers(client, rows) });
+});
+
 export const employeeShare = employeeEndpoint(async (request, context) => {
   const cfg = authConfig();
   employeeOrigin(request, cfg);

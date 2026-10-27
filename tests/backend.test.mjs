@@ -9,7 +9,8 @@ Object.assign(process.env, {
   NODE_ENV: "test", DATABASE_URL: process.env.TEST_DATABASE_URL || "postgres://localhost/not-used",
   AZURE_STORAGE_ACCOUNT_NAME: "testaccount", AZURE_STORAGE_CONTAINER: "test-container",
   AZURE_STORAGE_ACCOUNT_KEY: Buffer.from("nonfunctional-test-key").toString("base64"),
-  RESEND_API_KEY: "test-resend", FROM_EMAIL: "transfers@example.com", APP_URL: "https://example.com",
+  RESEND_API_KEY: "test-resend", FROM_EMAIL: "transfers@example.com", GRAPH_SENDER_EMAIL: "transfers@example.com",
+  APP_URL: "https://example.com",
   CRON_SECRET: "test-cron-secret-with-at-least-32-characters",
   COOKIE_SECRET: "test-cookie-secret-with-at-least-32-characters",
 });
@@ -90,6 +91,15 @@ test("API errors are safe and all JSON responses prohibit caching", async () => 
   } finally {
     console.error = original;
   }
+});
+
+test("new transfers store files under a Houston calendar date path", () => {
+  const transferId = "A".repeat(32), fileId = "B".repeat(32);
+  assert.equal(storage.dateObjectKey(transferId, fileId, new Date("2026-10-27T18:00:00Z")),
+    `transfers/2026/10/27/${transferId}/${fileId}`);
+  // 04:00 UTC Oct 28 is still 11pm CDT Oct 27.
+  assert.equal(storage.dateObjectKey(transferId, fileId, new Date("2026-10-28T04:00:00Z")),
+    `transfers/2026/10/27/${transferId}/${fileId}`);
 });
 
 test("part and download signatures contain bounded expiry and no unsafe content disposition", async () => {
@@ -213,7 +223,9 @@ test("PostgreSQL-backed lifecycle: resume, protected delivery, email idempotency
     assert.equal(empty.status, 409);
     assert.equal(deliveries.length, 0);
     const pending = await pool.query("SELECT * FROM transfer_files WHERE transfer_id=$1", [upload.id]);
-    uploads.get(pending.rows[0].object_key).parts = [{ PartNumber: 1, ETag: '"uploaded"', Size: 3 }];
+    const stagingUploadKey = (file) => `transfers/${file.transfer_id}/${file.id}`;
+    assert.match(pending.rows[0].object_key, new RegExp(`^transfers/\\d{4}/\\d{2}/\\d{2}/${upload.id}/${upload.files[0].id}$`));
+    uploads.get(stagingUploadKey(pending.rows[0])).parts = [{ PartNumber: 1, ETag: '"uploaded"', Size: 3 }];
     const resumed = await handlers.uploadStatus(request(`${path}/upload`, "GET", undefined, upload.uploadToken), ctx);
     assert.deepEqual((await resumed.json()).files[0].parts, [{ partNumber: 1, etag: storage.blockId(pending.rows[0], 1) }]);
     const complete = await handlers.completeTransfer(request(`${path}/complete`, "POST", {}, upload.uploadToken), ctx);
@@ -272,8 +284,8 @@ test("PostgreSQL-backed lifecycle: resume, protected delivery, email idempotency
     createdIds.push(expire.id);
     const expireFiles = await pool.query("SELECT * FROM transfer_files WHERE transfer_id=$1 ORDER BY ordinal", [expire.id]);
     const partial = expireFiles.rows[0];
-    objects.set(partial.object_key, { size: 3, metadata: uploads.get(partial.object_key).metadata });
-    uploads.delete(partial.object_key);
+    objects.set(partial.object_key, { size: 3, metadata: uploads.get(stagingUploadKey(partial)).metadata });
+    uploads.delete(stagingUploadKey(partial));
     await pool.query("UPDATE transfers SET expires_at = now() - interval '1 second', status='completing' WHERE id=$1", [expire.id]);
     assert.equal((await handlers.uploadStatus(request(`/${expire.id}/upload`, "GET", undefined, expire.uploadToken), context(expire.id))).status, 410);
     const cleanup = await cleanupTransfers(new Request("https://example.com/api/cron/cleanup", {
@@ -281,7 +293,7 @@ test("PostgreSQL-backed lifecycle: resume, protected delivery, email idempotency
     }));
     assert.equal(cleanup.status, 200, await cleanup.clone().text());
     assert.equal((await cleanup.json()).cleaned, 1);
-    assert.equal(uploads.has(pending.rows[0].object_key), false);
+    assert.equal(uploads.has(stagingUploadKey(pending.rows[0])), false);
     assert.equal(objects.has(pending.rows[0].object_key), true);
     const scrubbed = (await pool.query("SELECT * FROM transfers WHERE id=$1", [expire.id])).rows[0];
     assert.equal(scrubbed.status, "expired");
@@ -303,7 +315,7 @@ test("PostgreSQL-backed lifecycle: resume, protected delivery, email idempotency
     const retry = await (await handlers.createTransfer(request("", "POST", { ...metadata, passcode: "" }))).json();
     createdIds.push(retry.id);
     const retryFile = (await pool.query("SELECT * FROM transfer_files WHERE transfer_id=$1", [retry.id])).rows[0];
-    uploads.get(retryFile.object_key).parts = [{ PartNumber: 1, ETag: '"retry"', Size: 3 }];
+    uploads.get(stagingUploadKey(retryFile)).parts = [{ PartNumber: 1, ETag: '"retry"', Size: 3 }];
     failRecipient = metadata.senderEmail;
     const failedEmail = await handlers.completeTransfer(request(`/${retry.id}/complete`, "POST", {}, retry.uploadToken), context(retry.id));
     assert.equal(failedEmail.status, 200);

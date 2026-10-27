@@ -63,7 +63,7 @@ async function fingerprint(file) {
   return `${file.name}:${file.size}:${file.lastModified}:${Array.from(new Uint8Array(digest), (b) => b.toString(16).padStart(2, "0")).join("")}`;
 }
 
-export default function Uploader({ employee = null, onComplete }) {
+export default function Uploader({ employee = null, onComplete, showHero = true, slimHero = false }) {
   const [files, setFiles] = useState([]);
   const [saved, setSaved] = useState(null);
   const [busy, setBusy] = useState(false);
@@ -316,12 +316,14 @@ export default function Uploader({ employee = null, onComplete }) {
 
   return (
     <>
-      <section className="hero">
-        <div className="hero-wrap">
-          <h1>Send your design files</h1>
-          <p>Drop your artwork here and it goes straight to your Aspen contact. Recipients get a private link and confirmation right away.</p>
-        </div>
-      </section>
+      {showHero && (
+        <section className={`hero${slimHero ? " slim" : ""}`}>
+          <div className="hero-wrap">
+            <h1>Send your design files</h1>
+            <p>Drop your artwork here and it goes straight to your Aspen contact. Recipients get a private link and confirmation right away.</p>
+          </div>
+        </section>
+      )}
 
       <form className="card" ref={form} onSubmit={upload}>
         {saved && <p className="banner">An unfinished upload is saved on this browser. Reselect the original files to resume, or cancel it below.</p>}

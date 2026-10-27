@@ -14,6 +14,7 @@ import {
 } from "../src/lib/employee-auth.js";
 import {
   employeeHasTransfer, requireEmployeeTransfer, recordEmployeeUpload, employeeTransfers,
+  employeeBrowse, listBrowseChildren, matchesBrowseQuery, employeeDashboard, employeeCalendar,
   employeeShare, employeeDownload, employeeAssign,
 } from "../src/lib/employees.js";
 
@@ -145,7 +146,7 @@ test("successful callback exchanges code with verifier, verifies remote JWKS and
       const callbackRequest = new Request(`${cfg.callbackUrl}?state=${nonce}&code=nonfunctional-code`, { headers: { cookie } });
       const response = await authCallback(callbackRequest);
       assert.equal(response.status, 303);
-      assert.equal(response.headers.get("location"), `${cfg.appUrl}/`);
+      assert.equal(response.headers.get("location"), `${cfg.appUrl}/dashboard`);
       const setCookie = response.headers.get("set-cookie");
       const session = setCookie.match(/employee_session=([A-Za-z0-9_-]{43})/)[1];
       assert.notEqual(session, opaque);
@@ -288,6 +289,136 @@ test("authorized transfer, listing and sharing never expose upload credentials o
     assert.equal((await employeeShare(request(sessionCookie, {
       method: "POST", headers: { origin: "https://evil.example" },
     }), { params: Promise.resolve({ id }) })).status, 403);
+  });
+});
+
+test("blob explorer lists folders from object keys and stays ACL-scoped", async () => {
+  const dated = {
+    id: file.id, transfer_id: id, name: "Design.pdf", size: "20",
+    object_key: `transfers/2026/10/27/${id}/${file.id}`,
+    title: "Designs", company: "Company", sender_email: "sender@example.com",
+    completed_at: new Date("2026-10-27T17:00:00Z"),
+  };
+  let browseSql;
+  await withQueries(async (sql) => {
+    if (sql.includes("employee_sessions")) return { rows: [sessionRow] };
+    if (sql.includes("object_key LIKE")) { browseSql = sql; return { rows: [dated] }; }
+    return { rows: [] };
+  }, async () => {
+    const root = await employeeBrowse(new Request(
+      "https://example.com/api/employee/transfers/browse",
+      { headers: { cookie: sessionCookie } }));
+    const rootBody = await root.json();
+    assert.equal(root.status, 200);
+    assert.equal(rootBody.path, "transfers");
+    assert.deepEqual(rootBody.folders.map((folder) => folder.name), ["2026"]);
+    assert.equal(rootBody.folders[0].label, "2026");
+    assert.equal(rootBody.files.length, 0);
+    const month = await employeeBrowse(new Request(
+      "https://example.com/api/employee/transfers/browse?path=transfers/2026/10",
+      { headers: { cookie: sessionCookie } }));
+    const monthBody = await month.json();
+    assert.equal(monthBody.folders[0].name, "27");
+    assert.equal(monthBody.crumbs.at(-1).label, "October");
+    const leaf = await employeeBrowse(new Request(
+      `https://example.com/api/employee/transfers/browse?path=transfers/2026/10/27/${id}`,
+      { headers: { cookie: sessionCookie } }));
+    const leafBody = await leaf.json();
+    assert.equal(leafBody.files[0].name, "Design.pdf");
+    assert.equal(leafBody.files[0].transferId, id);
+    assert.equal(leafBody.crumbs.at(-1).label, "Company");
+    assert.ok(!JSON.stringify(leafBody).includes("private"));
+    assert.match(browseSql, /a.employee_id = \$2::uuid/);
+    assert.equal((await employeeBrowse(new Request(
+      "https://example.com/api/employee/transfers/browse?path=staging",
+      { headers: { cookie: sessionCookie } }))).status, 400);
+    assert.equal((await employeeBrowse(new Request(
+      "https://example.com/api/employee/transfers/browse?path=transfers/../etc",
+      { headers: { cookie: sessionCookie } }))).status, 400);
+    const byDate = await employeeBrowse(new Request(
+      "https://example.com/api/employee/transfers/browse?group=date",
+      { headers: { cookie: sessionCookie } }));
+    const dateBody = await byDate.json();
+    assert.equal(dateBody.folders[0].name, "2026-10-27");
+    assert.match(dateBody.folders[0].label, /October 27/);
+    const dateFiles = await employeeBrowse(new Request(
+      "https://example.com/api/employee/transfers/browse?group=date&key=2026-10-27",
+      { headers: { cookie: sessionCookie } }));
+    assert.equal((await dateFiles.json()).files[0].name, "Design.pdf");
+    const byCompany = await employeeBrowse(new Request(
+      "https://example.com/api/employee/transfers/browse?group=company",
+      { headers: { cookie: sessionCookie } }));
+    assert.equal((await byCompany.json()).folders[0].label, "Company");
+    const found = await employeeBrowse(new Request(
+      "https://example.com/api/employee/transfers/browse?q=Design.pdf",
+      { headers: { cookie: sessionCookie } }));
+    assert.equal((await found.json()).folders[0].name, "2026");
+    const missed = await employeeBrowse(new Request(
+      "https://example.com/api/employee/transfers/browse?q=missing-file",
+      { headers: { cookie: sessionCookie } }));
+    assert.deepEqual((await missed.json()).folders, []);
+    assert.equal((await employeeBrowse(new Request(
+      "https://example.com/api/employee/transfers/browse?group=owner",
+      { headers: { cookie: sessionCookie } }))).status, 400);
+    assert.equal((await employeeBrowse(new Request(
+      `https://example.com/api/employee/transfers/browse?q=${"x".repeat(201)}`,
+      { headers: { cookie: sessionCookie } }))).status, 400);
+  });
+  const children = listBrowseChildren([dated], "transfers/2026/10/27");
+  assert.equal(children.folders[0].transferId, id);
+  assert.equal(children.folders[0].label, "Company");
+  assert.equal(matchesBrowseQuery(dated, "company"), true);
+  assert.equal(matchesBrowseQuery(dated, "nope"), false);
+});
+
+test("dashboard statistics and calendar stay ACL-scoped on Houston dates", async () => {
+  let dashboardSql = "";
+  await withQueries(async (sql) => {
+    if (sql.includes("employee_sessions")) return { rows: [sessionRow] };
+    if (sql.includes("this_month")) {
+      dashboardSql = sql;
+      return { rows: [{ transfers: 3, today: 1, this_month: 2, expiring: 1, companies: 2 }] };
+    }
+    if (sql.includes("count(f.id)::int AS files")) return { rows: [{ files: 5, total_size: "40" }] };
+    if (sql.includes("NULLS LAST")) {
+      return { rows: [{ ...transfer, sender_email: "sender@example.com", completed_at: new Date("2026-10-27T17:00:00Z") }] };
+    }
+    if (sql.includes("ORDER BY transfers DESC")) return { rows: [{ company: "Company", transfers: 2 }] };
+    if (sql.includes("calendar_days")) {
+      return { rows: [{ calendar_days: "2026-10-27", transfer_count: 1, file_count: 1, total_size: "20" }] };
+    }
+    if (sql.includes("::date = $3::date")) {
+      return { rows: [{ ...transfer, sender_email: "sender@example.com", completed_at: new Date("2026-10-27T17:00:00Z") }] };
+    }
+    if (sql.startsWith("SELECT id,transfer_id")) return { rows: [file] };
+    return { rows: [] };
+  }, async () => {
+    const dashboard = await employeeDashboard(new Request(
+      "https://example.com/api/employee/dashboard?month=2026-10",
+      { headers: { cookie: sessionCookie } }));
+    const body = await dashboard.json();
+    assert.equal(dashboard.status, 200);
+    assert.equal(body.timezone, "America/Chicago");
+    assert.equal(body.month.key, "2026-10");
+    assert.equal(body.stats.transfers, 3);
+    assert.equal(body.stats.files, 5);
+    assert.equal(body.stats.thisMonth, 2);
+    assert.equal(body.companies[0].company, "Company");
+    assert.equal(body.days[0].date, "2026-10-27");
+    assert.equal(body.recent[0].files[0].name, "Design.pdf");
+    assert.match(dashboardSql, /a.employee_id = \$2::uuid/);
+    const day = await employeeCalendar(new Request(
+      "https://example.com/api/employee/transfers/calendar?date=2026-10-27",
+      { headers: { cookie: sessionCookie } }));
+    const dayBody = await day.json();
+    assert.equal(dayBody.transfers[0].title, "Designs");
+    assert.match(dayBody.label, /October 27/);
+    assert.equal((await employeeDashboard(new Request(
+      "https://example.com/api/employee/dashboard?month=2026-13",
+      { headers: { cookie: sessionCookie } }))).status, 400);
+    assert.equal((await employeeCalendar(new Request(
+      "https://example.com/api/employee/transfers/calendar?date=2026-02-30",
+      { headers: { cookie: sessionCookie } }))).status, 400);
   });
 });
 

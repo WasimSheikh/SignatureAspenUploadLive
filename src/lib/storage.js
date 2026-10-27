@@ -7,6 +7,15 @@ import * as local from "./local-storage.js";
 export { storage };
 const PREFIX = "azure-v1:";
 const missing = (error) => error?.statusCode === 404 || ["BlobNotFound", "ContainerNotFound"].includes(error?.code);
+export const COMPANY_TZ = "America/Chicago";
+
+// New transfers: transfers/YYYY/MM/DD/{transferId}/{fileId}. Old rows keep their saved object_key.
+export function dateObjectKey(transferId, fileId, at = new Date()) {
+  const ymd = new Intl.DateTimeFormat("en-CA", {
+    timeZone: COMPANY_TZ, year: "numeric", month: "2-digit", day: "2-digit",
+  }).format(at);
+  return `transfers/${ymd.replaceAll("-", "/")}/${transferId}/${fileId}`;
+}
 export function requireAzure(file) {
   if (isLocalMode()) { local.requireLocal(file); return; }
   if (!file.upload_id?.startsWith(PREFIX) || !/^[0-9a-f-]{36}$/.test(file.upload_id.slice(PREFIX.length))) {

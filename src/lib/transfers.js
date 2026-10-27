@@ -4,7 +4,7 @@ import { endpoint, json, readJson, requireOrigin, requireUploadToken, requireLiv
   requirePublic, publicMetadata } from "./http.js";
 import { randomId, hashToken, validateTransfer, makePasscodeHash, verifyPasscode,
   signUnlock, fail } from "./security.mjs";
-import { initiateFile, signPart, listParts, completeFile, removeFile, requireAzure } from "./storage.js";
+import { initiateFile, signPart, listParts, completeFile, removeFile, requireAzure, dateObjectKey } from "./storage.js";
 import { sendTransferEmails, publicUrl } from "./email.js";
 import { recordEmployeeUpload } from "./employees.js";
 
@@ -38,7 +38,7 @@ export const createTransfer = endpoint(async (request) => {
         await client.query(`INSERT INTO transfer_files
           (id,transfer_id,ordinal,name,size,content_type,object_key,part_size)
           VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`,
-        [fileId, id, ordinal, file.name, file.size, file.type, `transfers/${id}/${fileId}`, input.partSize]);
+        [fileId, id, ordinal, file.name, file.size, file.type, dateObjectKey(id, fileId), input.partSize]);
       }
       await recordEmployeeUpload(request, id, client);
       await client.query("COMMIT");
