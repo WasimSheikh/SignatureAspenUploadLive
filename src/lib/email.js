@@ -79,21 +79,21 @@ const SURFACE = "#F5F7FA";
 function btnNavy(url, label) {
   return `<table cellpadding="0" cellspacing="0" border="0" style="margin:8px 0 0 0"><tr>
 <td style="border-radius:8px;background-color:${NAVY}" bgcolor="${NAVY}">
-<a href="${escapeHtml(url)}" style="display:inline-block;padding:13px 24px;border-radius:8px;background-color:${NAVY};color:#ffffff;font-weight:700;font-size:15px;text-decoration:none;font-family:${FONT};line-height:1.3;mso-padding-alt:13px 24px">${label}</a>
+<a href="${escapeHtml(url)}" style="display:inline-block;padding:13px 24px;border-radius:8px;background-color:${NAVY};color:#ffffff;font-weight:700;font-size:15px;text-decoration:none;font-family:${FONT};line-height:1.3;mso-padding-alt:13px 24px"><font color="#ffffff">${label}</font></a>
 </td></tr></table>`;
 }
 
 function btnGreen(url, label) {
   return `<table cellpadding="0" cellspacing="0" border="0" style="margin:8px auto 0 auto"><tr>
 <td style="border-radius:8px;background-color:${GREEN}" bgcolor="${GREEN}">
-<a href="${escapeHtml(url)}" style="display:inline-block;padding:16px 30px;border-radius:8px;background-color:${GREEN};color:#0A2847;font-weight:700;font-size:17px;text-decoration:none;font-family:${FONT};line-height:1.3;mso-padding-alt:16px 30px">${label}</a>
+<a href="${escapeHtml(url)}" style="display:inline-block;padding:16px 30px;border-radius:8px;background-color:${GREEN};color:#0A2847;font-weight:700;font-size:17px;text-decoration:none;font-family:${FONT};line-height:1.3;mso-padding-alt:16px 30px"><font color="#0A2847">${label}</font></a>
 </td></tr></table>`;
 }
 
 function btnOutline(url, label) {
   return `<table cellpadding="0" cellspacing="0" border="0" style="margin:8px 0 0 0"><tr>
-<td style="border-radius:8px;border:1px solid #9FB0C5">
-<a href="${escapeHtml(url)}" style="display:inline-block;padding:12px 22px;border-radius:8px;background-color:#ffffff;color:${NAVY};font-weight:700;font-size:15px;text-decoration:none;font-family:${FONT};line-height:1.3;mso-padding-alt:12px 22px">${label}</a>
+<td style="border-radius:8px;border:1px solid #9FB0C5;background-color:#ffffff" bgcolor="#ffffff">
+<a href="${escapeHtml(url)}" style="display:inline-block;padding:12px 22px;border-radius:8px;background-color:#ffffff;color:${NAVY};font-weight:700;font-size:15px;text-decoration:none;font-family:${FONT};line-height:1.3;mso-padding-alt:12px 22px"><font color="#0E3760">${label}</font></a>
 </td></tr></table>`;
 }
 
@@ -229,8 +229,10 @@ function internalHtml(transfer, files, receipt, contactName) {
     const badgeBg = ext === "pdf" ? "#FDEEEC" : ["zip", "7z", "rar"].includes(ext) ? "#F0F8EA" : "#E3ECF7";
     const badgeColor = ext === "pdf" ? "#9B2C1F" : ["zip", "7z", "rar"].includes(ext) ? "#4E8A2A" : NAVY;
     return `<tr>
-      <td style="padding:10px 12px 10px 0;border-bottom:1px solid ${LINE};width:46px;vertical-align:middle">
-        <span style="display:inline-block;min-width:40px;text-align:center;font-size:10px;font-weight:700;letter-spacing:.04em;padding:4px 5px;border-radius:5px;background-color:${badgeBg};color:${badgeColor};font-family:${FONT}">${ext.toUpperCase().slice(0, 4) || "FILE"}</span>
+      <td width="52" style="padding:10px 8px 10px 0;border-bottom:1px solid ${LINE};vertical-align:middle">
+        <table cellpadding="0" cellspacing="0" border="0"><tr>
+          <td style="background-color:${badgeBg};border-radius:5px;padding:4px 6px;text-align:center;font-size:10px;font-weight:700;letter-spacing:.04em;color:${badgeColor};font-family:${FONT};white-space:nowrap" bgcolor="${badgeBg}"><font color="${badgeColor}">${ext.toUpperCase().slice(0, 4) || "FILE"}</font></td>
+        </tr></table>
       </td>
       <td style="padding:10px 12px 10px 0;border-bottom:1px solid ${LINE};font-size:14px;font-weight:500;color:#1A1A1A;font-family:${FONT}">${escapeHtml(f.name)}</td>
       <td style="padding:10px 0;border-bottom:1px solid ${LINE};font-size:13px;color:${MUTED};white-space:nowrap;text-align:right;font-family:${FONT}">${fmtSize(Number(f.size))}</td>
