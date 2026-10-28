@@ -49,8 +49,14 @@ export function expectedPartSize(size, partSize, partNumber) {
 }
 
 export function safeArchiveName(name) {
-  const result = name.normalize("NFC").replaceAll("\\", "/").split("/").pop().replace(/[:\u0000-\u001f\u007f]/g, "_");
-  return !result || result === "." || result === ".." ? "file" : result;
+  // Strip path separators, then remove chars invalid on Windows/macOS/Linux filesystems
+  const stripped = name.normalize("NFC")
+    .replaceAll("\\", "/").split("/").pop()   // path → last component
+    .replace(/[:\u0000-\u001f\u007f*?"<>|]/g, "_")  // filesystem-invalid chars
+    .replace(/\s+/g, " ")                    // collapse whitespace
+    .trim()
+    .replace(/^\.+|\.+$/g, "_");             // leading/trailing dots
+  return !stripped || stripped === "_" ? "file" : stripped;
 }
 
 export function jobNumberFromTitle(title) {
@@ -130,9 +136,9 @@ export function validateTransfer(input, limits = {}) {
   const files = input.files.map((file) => {
     if (!file || typeof file !== "object") fail(400, "Invalid file.");
     const name = text(file.name, "file name", 255);
-    if (!name || /[\\/:\r\n]/.test(name) || name === "." || name === ".." || name.startsWith(".") ||
+    if (!name || /[\\/:*?"<>|\r\n]/.test(name) || name === "." || name === ".." || name.startsWith(".") ||
         name.endsWith(".") || !allowedExtensions.has(name.split(".").pop().toLowerCase())) {
-      fail(400, "Files must have safe PSD, AI, PDF, ZIP, TIF, or TIFF names.");
+      fail(400, "Files must have safe PSD, AI, PDF, ZIP, TIF, or TIFF names (no * ? \" < > | characters).");
     }
     const key = name.normalize("NFC").toLowerCase();
     if (names.has(key)) fail(400, "Duplicate file names are not allowed.");

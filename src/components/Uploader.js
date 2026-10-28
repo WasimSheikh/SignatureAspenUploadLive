@@ -118,9 +118,9 @@ export default function Uploader({ employee = null, onComplete, showHero = true,
   function chooseFiles(incoming) {
     if (busy) return;
     const selected = Array.from(incoming);
-    const invalid = selected.filter((f) => !ALLOWED.test(f.name) || f.size === 0);
+    const invalid = selected.filter((f) => !ALLOWED.test(f.name) || f.size === 0 || /[*?"<>|]/.test(f.name));
     if (invalid.length) {
-      setError(`${invalid.map((f) => f.name).join(", ")} — only PSD, AI, PDF, ZIP, TIF or TIFF files are accepted.`);
+      setError(`${invalid.map((f) => f.name).join(", ")} — only PSD, AI, PDF, ZIP, TIF or TIFF files are accepted. Rename files with special characters (* ? " < > |) before uploading.`);
       return;
     }
     setError("");
