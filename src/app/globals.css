@@ -33,7 +33,7 @@ img { max-width: 100%; }
 [hidden] { display: none !important; }
 
 /* ── Wrap ─────────────────────────────── */
-main { max-width: 1120px; margin: 0 auto; padding: 0 16px 48px; }
+main { max-width: 1380px; margin: 0 auto; padding: 0 16px 48px; }
 @media (min-width: 760px) { main { padding: 0 24px 56px; } }
 
 /* ── Slim header ──────────────────────── */
@@ -51,7 +51,7 @@ main { max-width: 1120px; margin: 0 auto; padding: 0 16px 48px; }
 
 /* ── Hero (truly full-viewport-width) ─── */
 .hero { background: var(--navy); color: var(--white); padding: 44px 0 48px; width: 100vw; margin-left: calc(-50vw + 50%); }
-.hero-wrap { max-width: 1120px; margin: 0 auto; padding: 0 24px; }
+.hero-wrap { max-width: 1380px; margin: 0 auto; padding: 0 24px; }
 .hero h1 { color: var(--white); font-size: clamp(28px, 5vw, 44px); margin-bottom: 10px; }
 .hero p { color: #CFDAE8; font-size: 18px; max-width: 640px; }
 .hero.slim { padding: 16px 0 18px; }

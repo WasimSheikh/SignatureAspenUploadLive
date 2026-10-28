@@ -15,6 +15,10 @@ export const POST = employeeEndpoint(async (request) => {
 
   const expiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString();
 
+  // Reply-To is the employee who is sending the request (their own email),
+  // falling back to the contact email if the employee has no email on record.
+  const replyToEmail = employee.email || contactEmail;
+
   let emailSent = true;
   try {
     await sendUploadRequest({
@@ -22,7 +26,7 @@ export const POST = employeeEndpoint(async (request) => {
         id: contactId || "other",
         name: contactName || employee.name || "Aspen Team",
         role: contactRole || "Account Manager",
-        email: contactEmail,
+        email: replyToEmail,
       },
       customer: {
         email: customerEmail,
