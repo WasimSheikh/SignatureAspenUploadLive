@@ -1,4 +1,5 @@
 import Brand from "@/components/Brand";
+import SiteFooter from "@/components/SiteFooter";
 
 const LIVE = "https://fileshare2.signatureaspen.com";
 
@@ -133,7 +134,7 @@ export default function StatusPage() {
         </section>
       </article>
 
-      <footer>713.830.9500 · 3300 Kingswood St, Houston TX 77092 · Private links · Direct-to-cloud uploads · Automatic expiration</footer>
+      <SiteFooter />
     </main>
   );
 }

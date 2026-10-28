@@ -1,4 +1,5 @@
 import Workspace from "@/components/Workspace";
+import SiteFooter from "@/components/SiteFooter";
 import { currentEmployee } from "@/lib/current-employee";
 
 export const dynamic = "force-dynamic";
@@ -8,7 +9,7 @@ export default async function Home() {
   return (
     <main>
       <Workspace employee={employee} />
-      <footer>713.830.9500 · 3300 Kingswood St, Houston TX 77092 · Private links · Direct-to-cloud uploads · Automatic expiration</footer>
+      <SiteFooter />
     </main>
   );
 }

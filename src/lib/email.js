@@ -155,7 +155,7 @@ function emailWrap(body, footer) {
 }
 
 const COMMON_FOOTER = `<p style="margin:0 0 4px 0;color:${MUTED};font-family:${FONT};font-size:12px"><b style="color:${NAVY}">Signature Aspen</b> &middot; the IMAGE communications company</p>
-<p style="margin:0;color:${MUTED};font-family:${FONT};font-size:12px">3300 Kingswood St, Houston, Texas 77092 &middot; 713.830.9500 &middot; <a href="https://signatureaspen.com" style="color:${MUTED}">signatureaspen.com</a></p>`;
+<p style="margin:0;color:${MUTED};font-family:${FONT};font-size:12px">3300 Kingswood Ln., Houston, TX 77092<br>sales@signatureaspen.com &middot; Phone: 713.956.8555 &middot; Fax: 832.295.5795<br><a href="https://signatureaspen.com" style="color:${MUTED}">signatureaspen.com</a></p>`;
 
 // ── Email 1: Customer confirmation ────────────────────────────────────────────
 

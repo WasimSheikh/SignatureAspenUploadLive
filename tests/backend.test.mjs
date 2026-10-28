@@ -276,6 +276,7 @@ test("PostgreSQL-backed lifecycle: resume, protected delivery, email idempotency
     assert.equal(download.status, 302);
     const archive = await downloadTransfer(request(`${path}/download`, "GET", undefined, undefined, cookie), ctx);
     assert.equal(archive.headers.get("content-type"), "application/zip");
+    assert.match(archive.headers.get("content-disposition") || "", /filename="Studio - <script>Title<\/script>\.zip"/);
     const bytes = Buffer.from(await archive.arrayBuffer());
     assert.equal(bytes.subarray(0, 2).toString(), "PK");
     assert.ok(bytes.includes(Buffer.from("artwork.pdf")));

@@ -25,6 +25,8 @@ const CONTACTS_FOR_REQUEST = [
   { id: "msimpson", name: "Mike Simpson",   role: "Account Manager", email: "msimpson@signatureaspen.com" },
   { id: "jleon",    name: "Joel Leon",      role: "Account Manager", email: "JLeon@signatureaspen.com" },
   { id: "kdasilva", name: "Kris Da Silva",  role: "Account Manager", email: "kdasilva@signatureaspen.com" },
+  { id: "ihoover", name: "Ida Hoover", role: "Account Manager", email: "ihoover@signatureaspen.com" },
+  { id: "marmstrong", name: "Michelle Armstrong", role: "Account Manager", email: "marmstrong@signatureaspen.com" },
 ];
 
 function formatWhen(value) {

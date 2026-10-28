@@ -3,7 +3,7 @@ import {
   employeeOrigin, authConfig,
 } from "./employee-auth.js";
 import { employeeConfig } from "./employee-security.mjs";
-import { fail, signUnlock } from "./security.mjs";
+import { fail, jobNumberFromTitle, signUnlock } from "./security.mjs";
 import { readJson } from "./http.js";
 
 const transferIdPattern = /^[A-Za-z0-9_-]{32}$/;
@@ -141,6 +141,7 @@ function collectGroups(rows, keyOf, labelOf, newestFirst = false) {
       folder = {
         type: "folder", name, path: name, label: labelOf(name, row),
         fileCount: 0, totalSize: 0, modified, transferId: null, company: "", title: "",
+        jobNumber: "",
       };
       groups.set(name, folder);
     }
@@ -163,22 +164,40 @@ function browsePath(raw) {
   return parts.join("/");
 }
 
+export function displayName(value) {
+  const text = String(value || "").trim();
+  if (!text) return "";
+  if (text.toLowerCase() === "transfers") return "Transfers";
+  if (text === text.toLowerCase()) {
+    return text.replace(/[A-Za-z][^\s-]*/g, (word) => word[0].toUpperCase() + word.slice(1));
+  }
+  return text;
+}
+
+function transferFolderLabel(transfer) {
+  const company = displayName(transfer?.company);
+  const job = jobNumberFromTitle(transfer?.title);
+  if (company && job) return `${company} · ${job}`;
+  return company || displayName(transfer?.title) || "Transfer";
+}
+
 function folderLabel(path, name, transfer) {
   const parts = path.split("/");
+  if (name === "transfers" && parts.length === 1) return "Transfers";
   if (parts.length === 3 && /^\d{2}$/.test(name)) return MONTHS[Number(name) - 1] || name;
-  if (transfer && name === transfer.id) return transfer.company || transfer.title || "Transfer";
-  return name;
+  if (transfer && name === transfer.id) return transferFolderLabel(transfer);
+  return displayName(name) || name;
 }
 
 function crumbLabel(path, transferById) {
   const parts = path.split("/");
   const name = parts[parts.length - 1];
+  if (name === "transfers" && parts.length === 1) return "Transfers";
   if (parts.length === 3 && /^\d{2}$/.test(name)) return MONTHS[Number(name) - 1] || name;
   if (parts.length >= 2 && transferById.has(name)) {
-    const transfer = transferById.get(name);
-    return transfer.company || transfer.title || "Transfer";
+    return transferFolderLabel(transferById.get(name));
   }
-  return name;
+  return displayName(name) || name;
 }
 
 export function listBrowseChildren(rows, path) {
@@ -209,8 +228,9 @@ export function listBrowseChildren(rows, path) {
         label: folderLabel(childPath, name, isTransfer ? { id: row.transfer_id, company: row.company, title: row.title } : null),
         fileCount: 0, totalSize: 0, modified,
         transferId: isTransfer ? row.transfer_id : null,
-        company: isTransfer ? row.company : "",
+        company: isTransfer ? displayName(row.company) : "",
         title: isTransfer ? row.title : "",
+        jobNumber: isTransfer ? jobNumberFromTitle(row.title) : "",
       };
       folders.set(name, folder);
     }
@@ -263,7 +283,7 @@ export const employeeBrowse = employeeEndpoint(async (request) => {
   if (group === "company") {
     const companyOf = (row) => (row.company || "").trim() || "Untitled company";
     if (!key) {
-      const folders = collectGroups(visible, companyOf, (name) => name);
+      const folders = collectGroups(visible, companyOf, (name) => displayName(name) || name);
       return employeeJson({
         group, query, key: "", path: "", parent: "",
         crumbs: [{ path: "", label: "By company" }],
@@ -273,7 +293,7 @@ export const employeeBrowse = employeeEndpoint(async (request) => {
     const files = visible.filter((row) => companyOf(row) === key).map(asFile).sort(compareFiles);
     return employeeJson({
       group, query, key, path: key, parent: "",
-      crumbs: [{ path: "", label: "By company" }, { path: key, label: key }],
+      crumbs: [{ path: "", label: "By company" }, { path: key, label: displayName(key) || key }],
       folders: [], files,
     });
   }

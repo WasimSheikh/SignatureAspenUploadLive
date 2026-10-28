@@ -53,6 +53,41 @@ export function safeArchiveName(name) {
   return !result || result === "." || result === ".." ? "file" : result;
 }
 
+export function jobNumberFromTitle(title) {
+  const text = String(title || "").trim();
+  if (!text) return "";
+  const hashed = text.match(/#\s*([A-Za-z]?\d[\w.-]{2,})/);
+  if (hashed) return hashed[1];
+  if (/^[A-Za-z]?-?\d[\w.-]{2,}$/.test(text)) return text.replace(/^#/, "");
+  const leading = text.match(/^(\d{4,})\b/);
+  return leading ? leading[1] : "";
+}
+
+function safeFilePart(value) {
+  return String(value || "")
+    .normalize("NFC")
+    .replace(/[\\/:*?"<>|]+/g, " ")
+    .replace(/[\u0000-\u001f\u007f]/g, "")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, 80);
+}
+
+export function archiveDownloadName(transfer) {
+  const company = safeFilePart(transfer?.company);
+  const job = safeFilePart(jobNumberFromTitle(transfer?.title) || transfer?.title);
+  const parts = [...new Set([company, job].filter(Boolean))];
+  const base = parts.join(" - ") || `transfer-${transfer?.id || "files"}`;
+  return `${base}.zip`;
+}
+
+export function contentDisposition(filename) {
+  const fallback = String(filename || "download").replace(/[^\x20-\x7e]|["\\]/g, "_");
+  const encoded = encodeURIComponent(filename).replace(/['()*]/g, (char) =>
+    `%${char.charCodeAt(0).toString(16).toUpperCase()}`);
+  return `attachment; filename="${fallback}"; filename*=UTF-8''${encoded}`;
+}
+
 function text(value, name, max, fallback = "") {
   if (value == null) return fallback;
   if (typeof value !== "string" || value.length > max || /[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/.test(value)) {

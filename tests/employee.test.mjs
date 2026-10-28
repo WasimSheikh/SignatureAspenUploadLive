@@ -309,6 +309,7 @@ test("blob explorer lists folders from object keys for every live transfer", asy
     const rootBody = await root.json();
     assert.equal(root.status, 200);
     assert.equal(rootBody.path, "transfers");
+    assert.equal(rootBody.crumbs[0].label, "Transfers");
     assert.deepEqual(rootBody.folders.map((folder) => folder.name), ["2026"]);
     assert.equal(rootBody.folders[0].label, "2026");
     assert.equal(rootBody.files.length, 0);
@@ -365,6 +366,13 @@ test("blob explorer lists folders from object keys for every live transfer", asy
   const children = listBrowseChildren([dated], "transfers/2026/10/27");
   assert.equal(children.folders[0].transferId, id);
   assert.equal(children.folders[0].label, "Company");
+  assert.equal(children.folders[0].jobNumber, "");
+  const jobbed = listBrowseChildren([{
+    ...dated, company: "bayou city credit union", title: "#130912 Fall Member Mailer",
+  }], "transfers/2026/10/27");
+  assert.equal(jobbed.folders[0].label, "Bayou City Credit Union · 130912");
+  assert.equal(jobbed.folders[0].company, "Bayou City Credit Union");
+  assert.equal(jobbed.folders[0].jobNumber, "130912");
   assert.equal(matchesBrowseQuery(dated, "company"), true);
   assert.equal(matchesBrowseQuery(dated, "nope"), false);
 });

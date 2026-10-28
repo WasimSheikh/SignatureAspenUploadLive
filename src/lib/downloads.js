@@ -4,7 +4,7 @@ import { db, getTransfer, getFiles, recordAccess } from "./db.js";
 import { endpoint, requirePublic } from "./http.js";
 import { transferId } from "./transfers.js";
 import { signDownload, objectStream } from "./storage.js";
-import { safeArchiveName, fail } from "./security.mjs";
+import { archiveDownloadName, contentDisposition, safeArchiveName, fail } from "./security.mjs";
 import { isLocalMode } from "./config.js";
 
 export const downloadTransfer = endpoint(async (request, context) => {
@@ -19,11 +19,9 @@ export const downloadTransfer = endpoint(async (request, context) => {
     await recordAccess(db(), id, "file_download", file.id);
     if (isLocalMode()) {
       const stream = await objectStream(file, request.signal);
-      const fallback = file.name.replace(/[^\x20-\x7e]|["\\]/g, "_");
-      const encoded = encodeURIComponent(file.name).replace(/['()*]/g, (c) => `%${c.charCodeAt(0).toString(16).toUpperCase()}`);
       return new Response(Readable.toWeb(Readable.from(stream)), { headers: {
         "Content-Type": "application/octet-stream",
-        "Content-Disposition": `attachment; filename="${fallback}"; filename*=UTF-8''${encoded}`,
+        "Content-Disposition": contentDisposition(file.name),
         "Content-Length": String(file.size),
         "Cache-Control": "no-store", "X-Content-Type-Options": "nosniff", "Referrer-Policy": "no-referrer",
       } });
@@ -74,7 +72,7 @@ export const downloadTransfer = endpoint(async (request, context) => {
   void archive.finalize().catch(stop);
   return new Response(Readable.toWeb(output), { headers: {
     "Content-Type": "application/zip",
-    "Content-Disposition": `attachment; filename="transfer-${id}.zip"`,
+    "Content-Disposition": contentDisposition(archiveDownloadName(transfer)),
     "Cache-Control": "no-store", "X-Content-Type-Options": "nosniff",
     "Referrer-Policy": "no-referrer",
   } });

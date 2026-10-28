@@ -19,8 +19,11 @@ const CONTACTS = [
   { id: "msimpson",  name: "Mike Simpson",     role: "Account Manager", email: "msimpson@signatureaspen.com" },
   { id: "jleon",     name: "Joel Leon",        role: "Account Manager", email: "JLeon@signatureaspen.com" },
   { id: "kdasilva",  name: "Kris Da Silva",    role: "Account Manager", email: "kdasilva@signatureaspen.com" },
-  { id: "other",     name: "Other",            label: "Other — I'll type their name below", role: "", email: "uploads@signatureaspen.com" },
+  { id: "ihoover",   name: "Ida Hoover",       role: "Account Manager", email: "ihoover@signatureaspen.com" },
+  { id: "marmstrong", name: "Michelle Armstrong", role: "Account Manager", email: "marmstrong@signatureaspen.com" },
+  { id: "other",     name: "Other",            label: "Other — I'll type their name below", role: "", email: "sales@signatureaspen.com" },
 ];
+const SALES_CONTACT = { id: "sales", name: "Signature Aspen", email: "sales@signatureaspen.com" };
 
 const formatSize = (bytes) => bytes < 1024 ** 2
   ? `${(bytes / 1024).toFixed(0)} KB`
@@ -94,7 +97,10 @@ export default function Uploader({ employee = null, onComplete, showHero = true,
     try {
       const params = new URLSearchParams(window.location.search);
       const prefill = {};
-      if (params.get("contact")) prefill.contact = params.get("contact");
+      if (params.get("contact")) {
+        prefill.contact = params.get("contact");
+        if (params.get("contact") === "other") setOtherContact(true);
+      }
       if (params.get("job")) prefill.jobNumber = params.get("job");
       if (params.get("company")) prefill.company = params.get("company");
       if (Object.keys(prefill).length) setUrlPrefill(prefill);
@@ -153,7 +159,7 @@ export default function Uploader({ employee = null, onComplete, showHero = true,
     const abort = new AbortController();
     controller.current = abort;
     try {
-      const contactBase = CONTACTS.find((c) => c.id === fields.contact) || CONTACTS[0];
+      const contactBase = CONTACTS.find((c) => c.id === fields.contact) || SALES_CONTACT;
       const contact = proof
         ? { id: "customer", name: fields.name || "Customer", email: fields.customerEmail }
         : fields.contact === "other"
@@ -439,10 +445,10 @@ export default function Uploader({ employee = null, onComplete, showHero = true,
               </div>
               {!proof && (
                 <div className="field">
-                  <label>Who at Aspen are you working with?<span className="req" aria-hidden="true">*</span>
-                    <select className="in" name="contact" required defaultValue={urlPrefill.contact || ""}
+                  <label>Who at Aspen are you working with? <span className="opt">(optional)</span>
+                    <select className="in" name="contact" defaultValue={urlPrefill.contact || ""}
                       onChange={(e) => setOtherContact(e.target.value === "other")}>
-                      <option value="" disabled>Choose your contact</option>
+                      <option value="">Not sure — send to sales</option>
                       {CONTACTS.map((c) => (
                         <option key={c.id} value={c.id}>
                           {c.label || (c.role ? `${c.name} — ${c.role}` : c.name)}
@@ -541,7 +547,7 @@ export default function Uploader({ employee = null, onComplete, showHero = true,
               <path d="M22 16.92v3a2 2 0 01-2.18 2 19.79 19.79 0 01-8.63-3.07A19.5 19.5 0 013 6.18a2 2 0 012-2.18h3a2 2 0 012 1.72c.13.96.37 1.9.7 2.81a2 2 0 01-.45 2.11L9.09 11.91a16 16 0 005 5l1.27-1.27a2 2 0 012.11-.45c.91.33 1.85.57 2.81.7A2 2 0 0122 16.92z"/>
             </svg>
           </span>
-          <div><h3>Bigger than 20 GiB?</h3><p>Call 713.830.9500 and we will send you a special link.</p></div>
+          <div><h3>Bigger than 20 GiB?</h3><p>Call 713.956.8555 and we will send you a special link.</p></div>
         </div>
       </section>
     </>

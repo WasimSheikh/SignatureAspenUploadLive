@@ -17,18 +17,16 @@ function extOf(name) {
   const i = name.lastIndexOf(".");
   return i > 0 ? name.slice(i + 1).toLowerCase() : "";
 }
-function badgeLabel(name) {
+
+function fileKind(name) {
   const e = extOf(name);
-  return e ? e.toUpperCase().slice(0, 4) : "FILE";
+  if (e === "pdf") return { label: "PDF", tone: "pdf" };
+  if (["zip", "7z", "rar"].includes(e)) return { label: "ZIP", tone: "zip" };
+  if (["ai", "eps", "psd", "indd"].includes(e)) return { label: e.toUpperCase(), tone: "art" };
+  if (["jpg", "jpeg", "png", "tif", "tiff", "gif"].includes(e)) return { label: e.toUpperCase().slice(0, 4), tone: "img" };
+  return { label: e ? e.toUpperCase().slice(0, 4) : "File", tone: "other" };
 }
-function badgeClass(name) {
-  const e = extOf(name);
-  if (e === "pdf") return "b-pdf";
-  if (["zip", "7z", "rar"].includes(e)) return "b-zip";
-  if (["ai", "eps", "psd", "indd"].includes(e)) return "b-art";
-  if (["jpg", "jpeg", "png", "tif", "tiff", "gif"].includes(e)) return "b-img";
-  return "b-other";
-}
+
 function formatModified(value) {
   if (!value) return "—";
   return new Date(value).toLocaleString("en-US", {
@@ -39,8 +37,30 @@ function formatModified(value) {
 function FolderIcon() {
   return (
     <svg className="ex-icon" viewBox="0 0 24 24" aria-hidden="true">
-      <path fill="#C9A227" d="M3 6.5A1.5 1.5 0 0 1 4.5 5H9l2 2h8.5A1.5 1.5 0 0 1 21 8.5v10A1.5 1.5 0 0 1 19.5 20h-15A1.5 1.5 0 0 1 3 18.5v-12Z" />
-      <path fill="#E8C547" d="M3 9h18v9.5A1.5 1.5 0 0 1 19.5 20h-15A1.5 1.5 0 0 1 3 18.5V9Z" />
+      <path fill="#E2B53A" d="M3.5 6.75A1.75 1.75 0 0 1 5.25 5h4.1c.3 0 .59.12.8.33l1.2 1.17h7.4A1.75 1.75 0 0 1 20.5 8.25v9A1.75 1.75 0 0 1 18.75 19h-13.5A1.75 1.75 0 0 1 3.5 17.25v-10.5Z" />
+      <path fill="#F6D36A" d="M3.5 9h17v8.25A1.75 1.75 0 0 1 18.75 19h-13.5A1.75 1.75 0 0 1 3.5 17.25V9Z" />
+    </svg>
+  );
+}
+
+function FileIcon({ name }) {
+  const { label, tone } = fileKind(name);
+  return (
+    <span className={`ex-file-icon ${tone}`} aria-hidden="true">
+      <svg viewBox="0 0 24 24">
+        <path d="M7 3.5h7.2L19 8.3V20a1.5 1.5 0 0 1-1.5 1.5h-10A1.5 1.5 0 0 1 6 20V5A1.5 1.5 0 0 1 7.5 3.5H7Z" />
+        <path d="M14.2 3.5V8.3H19" />
+      </svg>
+      <small>{label.slice(0, 3)}</small>
+    </span>
+  );
+}
+
+function DownloadIcon() {
+  return (
+    <svg className="ex-action-icon" viewBox="0 0 24 24" aria-hidden="true">
+      <path fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"
+        d="M12 4v10m0 0 4-4m-4 4-4-4M6 18h12" />
     </svg>
   );
 }
@@ -51,6 +71,17 @@ function browseUrl(group, path, key, query) {
   if (group === "folder") params.set("path", path || "transfers");
   else if (key) params.set("key", key);
   return `/api/employee/transfers/browse?${params}`;
+}
+
+function folderMain(folder) {
+  return folder.company || folder.label;
+}
+
+function folderSub(folder) {
+  if (folder.jobNumber) return `Job #${folder.jobNumber}`;
+  if (folder.title && folder.title !== folder.label && folder.title !== folder.company) return folder.title;
+  if (folder.fileCount) return `${folder.fileCount} file${folder.fileCount === 1 ? "" : "s"}`;
+  return "";
 }
 
 export default function FileBrowser() {
@@ -129,7 +160,7 @@ export default function FileBrowser() {
 
   const folders = listing?.folders || [];
   const files = listing?.files || [];
-  const crumbs = listing?.crumbs || [{ path: "transfers", label: "transfers" }];
+  const crumbs = listing?.crumbs || [{ path: "transfers", label: "Transfers" }];
   const empty = !loading && listing && folders.length === 0 && files.length === 0;
 
   return (
@@ -179,7 +210,7 @@ export default function FileBrowser() {
                 key={`tree-${crumb.path}-${index}`}
                 type="button"
                 className={`ex-tree-item${(group === "folder" ? crumb.path === path : (index === 0 ? !key : crumb.path === key)) ? " on" : ""}`}
-                style={{ paddingLeft: 10 + index * 14 }}
+                style={{ paddingLeft: 12 + index * 14 }}
                 onClick={() => openCrumb(crumb, index)}
               >
                 <FolderIcon />
@@ -191,7 +222,7 @@ export default function FileBrowser() {
                 key={folder.path}
                 type="button"
                 className="ex-tree-item"
-                style={{ paddingLeft: 10 + crumbs.length * 14 }}
+                style={{ paddingLeft: 12 + crumbs.length * 14 }}
                 onClick={() => openFolder(folder)}
               >
                 <FolderIcon />
@@ -204,11 +235,11 @@ export default function FileBrowser() {
             <table className="ex-table">
               <thead>
                 <tr>
-                  <th>Name</th>
-                  <th>Modified</th>
-                  <th>Size</th>
-                  <th>Kind</th>
-                  <th><span className="visually-hidden">Actions</span></th>
+                  <th className="ex-col-name">Name</th>
+                  <th className="ex-col-modified">Modified</th>
+                  <th className="ex-col-size">Size</th>
+                  <th className="ex-col-kind">Kind</th>
+                  <th className="ex-col-actions">Actions</th>
                 </tr>
               </thead>
               <tbody>
@@ -217,7 +248,7 @@ export default function FileBrowser() {
                     <td>
                       <button type="button" className="ex-name" onClick={goParent}>
                         <FolderIcon />
-                        <span>..</span>
+                        <span className="ex-name-text"><span className="ex-name-main">..</span></span>
                       </button>
                     </td>
                     <td>—</td>
@@ -226,59 +257,65 @@ export default function FileBrowser() {
                     <td />
                   </tr>
                 )}
-                {folders.map((folder) => (
-                  <tr key={folder.path} className="ex-row" onClick={() => openFolder(folder)}>
-                    <td>
-                      <button type="button" className="ex-name" onClick={() => openFolder(folder)}>
-                        <FolderIcon />
-                        <span>
-                          {folder.label}
-                          {folder.title && folder.company && folder.title !== folder.label && (
-                            <small> · {folder.title}</small>
-                          )}
+                {folders.map((folder) => {
+                  const sub = folderSub(folder);
+                  return (
+                    <tr key={folder.path} className="ex-row" onClick={() => openFolder(folder)}>
+                      <td>
+                        <button type="button" className="ex-name" onClick={() => openFolder(folder)}>
+                          <FolderIcon />
+                          <span className="ex-name-text">
+                            <span className="ex-name-main">{folderMain(folder)}</span>
+                            {sub && <small>{sub}</small>}
+                          </span>
+                        </button>
+                      </td>
+                      <td>{formatModified(folder.modified)}</td>
+                      <td>{folder.totalSize ? size(folder.totalSize) : "—"}</td>
+                      <td>Folder</td>
+                      <td>
+                        {folder.transferId && (
+                          <div className="ex-actions" onClick={(event) => event.stopPropagation()}>
+                            <a className="text-button" href={`/api/employee/transfers/${folder.transferId}/download`}>Download ZIP</a>
+                            <button type="button" className="text-button" disabled={Boolean(action)}
+                              onClick={() => share(folder.transferId)}>Share</button>
+                          </div>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })}
+                {files.map((file) => {
+                  const kind = fileKind(file.name);
+                  return (
+                    <tr key={`${file.transferId}-${file.id}`} className="ex-row file">
+                      <td>
+                        <span className="ex-name">
+                          <FileIcon name={file.name} />
+                          <span className="ex-name-text">
+                            <span className="ex-name-main">{file.name}</span>
+                            {group !== "folder" && (file.company || file.title) && (
+                              <small>{[file.company, file.title].filter(Boolean).join(" · ")}</small>
+                            )}
+                          </span>
                         </span>
-                      </button>
-                    </td>
-                    <td>{formatModified(folder.modified)}</td>
-                    <td>{folder.totalSize ? size(folder.totalSize) : "—"}</td>
-                    <td>{folder.fileCount} item{folder.fileCount === 1 ? "" : "s"}</td>
-                    <td>
-                      {folder.transferId && (
-                        <div className="ex-actions" onClick={(event) => event.stopPropagation()}>
-                          <a className="text-button" href={`/api/employee/transfers/${folder.transferId}/download`}>ZIP all</a>
+                      </td>
+                      <td>{formatModified(file.modified)}</td>
+                      <td>{size(file.size)}</td>
+                      <td>{kind.label}</td>
+                      <td>
+                        <div className="ex-actions">
+                          <a className="dl-btn secondary" href={`/api/employee/transfers/${file.transferId}/download?file=${encodeURIComponent(file.id)}`}
+                            aria-label={`Download ${file.name}`} title="Download">
+                            <DownloadIcon />
+                          </a>
                           <button type="button" className="text-button" disabled={Boolean(action)}
-                            onClick={() => share(folder.transferId)}>Share</button>
+                            onClick={() => share(file.transferId)}>Share</button>
                         </div>
-                      )}
-                    </td>
-                  </tr>
-                ))}
-                {files.map((file) => (
-                  <tr key={`${file.transferId}-${file.id}`} className="ex-row file">
-                    <td>
-                      <span className="ex-name">
-                        <span className={`badge ${badgeClass(file.name)}`}>{badgeLabel(file.name)}</span>
-                        <span>
-                          {file.name}
-                          {group !== "folder" && (file.company || file.title) && (
-                            <small> · {file.company || file.title}</small>
-                          )}
-                        </span>
-                      </span>
-                    </td>
-                    <td>{formatModified(file.modified)}</td>
-                    <td>{size(file.size)}</td>
-                    <td>{badgeLabel(file.name)}</td>
-                    <td>
-                      <div className="ex-actions">
-                        <a className="dl-btn secondary" href={`/api/employee/transfers/${file.transferId}/download?file=${encodeURIComponent(file.id)}`}
-                          aria-label={`Download ${file.name}`} title="Download">↓</a>
-                        <button type="button" className="text-button" disabled={Boolean(action)}
-                          onClick={() => share(file.transferId)}>Share</button>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>

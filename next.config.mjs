@@ -1,6 +1,7 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   output: 'standalone',
+  devIndicators: false,
   async headers() {
     const security = [
       { key: "Referrer-Policy", value: "no-referrer" },

@@ -2,7 +2,8 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import {
   BASE_PART_SIZE, MAX_UPLOAD_PARTS, HttpError, randomId, hashToken, equalSecret,
-  partSizeFor, expectedPartSize, safeArchiveName, validateTransfer, validateParts,
+  partSizeFor, expectedPartSize, safeArchiveName, archiveDownloadName, jobNumberFromTitle,
+  contentDisposition, validateTransfer, validateParts,
   makePasscodeHash, verifyPasscode, signUnlock, verifyUnlock, escapeHtml,
 } from "../src/lib/security.mjs";
 
@@ -142,4 +143,17 @@ test("archive entries cannot escape ZIP root and email HTML is escaped", () => {
   assert.equal(safeArchiveName(""), "file");
   assert.equal(safeArchiveName("bad\u0000.pdf"), "bad_.pdf");
   assert.equal(escapeHtml(`<script>"&'</script>`), "&lt;script&gt;&quot;&amp;&#39;&lt;/script&gt;");
+  assert.equal(jobNumberFromTitle("#130912 Fall Member Mailer"), "130912");
+  assert.equal(jobNumberFromTitle("1636737"), "1636737");
+  assert.equal(jobNumberFromTitle("Q-48817"), "Q-48817");
+  assert.equal(jobNumberFromTitle("EMAIL FORMAT TEST"), "");
+  assert.equal(archiveDownloadName({
+    id: "abc", company: "Bayou City Credit Union", title: "#130912 Fall Member Mailer",
+  }), "Bayou City Credit Union - 130912.zip");
+  assert.equal(archiveDownloadName({ id: "abc", company: "Signature Aspen", title: "1636737" }),
+    "Signature Aspen - 1636737.zip");
+  assert.equal(archiveDownloadName({ id: "abc", company: "Studio", title: "" }), "Studio.zip");
+  assert.equal(archiveDownloadName({ id: "abc", company: "", title: "" }), "transfer-abc.zip");
+  assert.match(contentDisposition("Bayou City Credit Union - 130912.zip"),
+    /filename="Bayou City Credit Union - 130912\.zip"/);
 });
