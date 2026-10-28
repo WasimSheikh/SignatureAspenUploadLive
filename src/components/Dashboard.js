@@ -47,7 +47,7 @@ function TransferList({ transfers, action, onShare, employee, onAssign, onLocal,
         </div>
         {transfer.nasStatus && <span className={`badge nas-${transfer.nasStatus}`}>{nasLabels[transfer.nasStatus] || "NAS unavailable"}</span>}
       </div>
-      <p className="muted fine-print">From {transfer.senderEmail} · {transfer.completedAt ? `Received ${formatWhen(transfer.completedAt)} · ` : ""}Expires {formatWhen(transfer.expiresAt)}</p>
+      <p className="muted fine-print">From {transfer.senderEmail}{transfer.completedAt ? ` · Received ${formatWhen(transfer.completedAt)}` : ""}</p>
       <ul className="file-list">{transfer.files.map((file) => (
         <li key={file.id}><span>{file.name}<small>{size(file.size)}</small></span>
           <div className="file-actions">
@@ -283,7 +283,6 @@ function WorkspaceBody({ employee, initialTab = "overview" }) {
             <div className="stat-card"><strong>{stats?.companies ?? "—"}</strong><span>Companies</span></div>
             <div className="stat-card"><strong>{stats?.thisMonth ?? "—"}</strong><span>This month</span></div>
             <div className="stat-card"><strong>{stats?.today ?? "—"}</strong><span>Today</span></div>
-            <div className="stat-card"><strong>{stats?.expiring ?? "—"}</strong><span>Expiring in 7 days</span></div>
           </div>
           <div className="dash-split">
             <div>

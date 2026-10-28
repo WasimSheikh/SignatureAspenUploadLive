@@ -100,6 +100,11 @@ export default function FileBrowser() {
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const [action, setAction] = useState("");
+  const [shareModal, setShareModal] = useState(null); // { transferId, url, requiresPasscode }
+  const [shareEmail, setShareEmail] = useState("");
+  const [shareMsg, setShareMsg] = useState("");
+  const [shareSending, setShareSending] = useState(false);
+  const [shareResult, setShareResult] = useState("");
 
   useEffect(() => {
     const timer = setTimeout(() => setQuery(draft.trim()), 200);
@@ -141,24 +146,38 @@ export default function FileBrowser() {
 
   async function share(transferId) {
     setAction(`share-${transferId}`);
-    setNotice("");
     setError("");
     try {
       const data = await request(`/api/employee/transfers/${transferId}/share`, {
         method: "POST", headers: { "Content-Type": "application/json" }, body: "{}",
       });
-      try {
-        await navigator.clipboard.writeText(data.url);
-        setNotice(data.requiresPasscode
-          ? "Link copied. Recipients still need the sender’s passcode."
-          : "Share link copied. Share only with intended recipients.");
-      } catch {
-        setNotice(`Copy this link: ${data.url}${data.requiresPasscode ? " (passcode required)" : ""}`);
-      }
+      setShareModal({ transferId, url: data.url, requiresPasscode: data.requiresPasscode });
+      setShareEmail("");
+      setShareMsg(`Here are your files from Signature Aspen.\n\nDownload link: ${data.url}${data.requiresPasscode ? "\n\nNote: This transfer is protected. The sender will share the passcode with you separately." : ""}`);
+      setShareResult("");
     } catch (failure) {
       setError(failure.message);
     } finally {
       setAction("");
+    }
+  }
+
+  async function sendShareEmail(e) {
+    e.preventDefault();
+    if (!shareEmail.trim() || !shareModal) return;
+    setShareSending(true);
+    setShareResult("");
+    try {
+      await request("/api/employee/send-share", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ transferId: shareModal.transferId, toEmail: shareEmail.trim(), message: shareMsg }),
+      });
+      setShareResult("sent");
+    } catch (failure) {
+      setShareResult("error: " + failure.message);
+    } finally {
+      setShareSending(false);
     }
   }
 
@@ -328,6 +347,57 @@ export default function FileBrowser() {
                 })}
               </tbody>
             </table>
+          </div>
+        </div>
+      )}
+
+      {/* Share modal */}
+      {shareModal && (
+        <div style={{ position:"fixed", inset:0, background:"rgba(0,0,0,.45)", zIndex:200, display:"flex", alignItems:"center", justifyContent:"center", padding:16 }}
+          onClick={(e) => { if(e.target===e.currentTarget) setShareModal(null); }}>
+          <div className="card" style={{ width:"100%", maxWidth:480, padding:28, position:"relative" }}>
+            <button type="button" onClick={() => setShareModal(null)}
+              style={{ position:"absolute", top:14, right:16, background:"none", border:0, fontSize:22, cursor:"pointer", color:"var(--muted)", lineHeight:1 }}
+              aria-label="Close">×</button>
+
+            <h2 style={{ fontSize:18, marginBottom:4 }}>Send download link</h2>
+            <p style={{ fontSize:13, color:"var(--muted)", marginBottom:20 }}>
+              The customer will receive an email with a link to download their files.
+              {shareModal.requiresPasscode && " This transfer has a passcode — remind them to ask the sender for it."}
+            </p>
+
+            {shareResult === "sent" ? (
+              <div style={{ textAlign:"center", padding:"24px 0" }}>
+                <div style={{ fontSize:40, marginBottom:8 }}>✓</div>
+                <p style={{ fontWeight:700, color:"var(--navy)", marginBottom:4 }}>Email sent</p>
+                <p style={{ fontSize:13, color:"var(--muted)", marginBottom:20 }}>The download link was sent to {shareEmail}.</p>
+                <button className="button secondary" onClick={() => setShareModal(null)}>Close</button>
+              </div>
+            ) : (
+              <form onSubmit={sendShareEmail}>
+                <div className="field">
+                  <label>Customer email<span className="req">*</span>
+                    <input className="in" type="email" required value={shareEmail}
+                      onChange={e => setShareEmail(e.target.value)}
+                      placeholder="customer@company.com" autoFocus />
+                  </label>
+                </div>
+                <div className="field">
+                  <label>Message
+                    <textarea className="in" rows={5} value={shareMsg}
+                      onChange={e => setShareMsg(e.target.value)} />
+                  </label>
+                </div>
+                {shareResult.startsWith("error") && <p className="error">{shareResult.slice(7)}</p>}
+                <div style={{ display:"flex", gap:10, justifyContent:"flex-end", marginTop:4 }}>
+                  <button type="button" className="button secondary" onClick={() => setShareModal(null)}>Cancel</button>
+                  <button type="submit" className="button btn-primary" disabled={shareSending || !shareEmail.trim()}
+                    style={{ width:"auto" }}>
+                    {shareSending ? "Sending…" : "Send email"}
+                  </button>
+                </div>
+              </form>
+            )}
           </div>
         </div>
       )}
