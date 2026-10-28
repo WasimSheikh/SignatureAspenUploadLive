@@ -2,8 +2,10 @@
 
 import { useEffect, useRef, useState } from "react";
 import { putPart, uploadParts } from "@/lib/upload-client.mjs";
+import ShareLink from "./ShareLink";
 
-const STORAGE_KEY = "design-delivery-upload";
+const STORAGE_UPLOAD = "design-delivery-upload";
+const STORAGE_PROOF = "design-delivery-proof";
 const ALLOWED = /\.(psd|ai|pdf|zip|tiff?)$/i;
 const MAX_BYTES = 20 * 1024 ** 3;
 
@@ -63,7 +65,9 @@ async function fingerprint(file) {
   return `${file.name}:${file.size}:${file.lastModified}:${Array.from(new Uint8Array(digest), (b) => b.toString(16).padStart(2, "0")).join("")}`;
 }
 
-export default function Uploader({ employee = null, onComplete, showHero = true, slimHero = false }) {
+export default function Uploader({ employee = null, onComplete, showHero = true, slimHero = false, mode = "upload" }) {
+  const proof = mode === "proof";
+  const storageKey = proof ? STORAGE_PROOF : STORAGE_UPLOAD;
   const [files, setFiles] = useState([]);
   const [saved, setSaved] = useState(null);
   const [busy, setBusy] = useState(false);
@@ -81,7 +85,7 @@ export default function Uploader({ employee = null, onComplete, showHero = true,
 
   useEffect(() => {
     try {
-      const stored = JSON.parse(localStorage.getItem(STORAGE_KEY));
+      const stored = JSON.parse(localStorage.getItem(storageKey));
       if (stored?.id && stored?.uploadToken && Array.isArray(stored.fingerprints)) {
         setSaved(stored);
         active.current = stored;
@@ -131,8 +135,8 @@ export default function Uploader({ employee = null, onComplete, showHero = true,
     active.current = value;
     setSaved(value);
     try {
-      if (value) localStorage.setItem(STORAGE_KEY, JSON.stringify(value));
-      else localStorage.removeItem(STORAGE_KEY);
+      if (value) localStorage.setItem(storageKey, JSON.stringify(value));
+      else localStorage.removeItem(storageKey);
     } catch {
       if (value) setNotice("Browser storage is unavailable. Keep this page open to retain upload progress.");
     }
@@ -150,9 +154,11 @@ export default function Uploader({ employee = null, onComplete, showHero = true,
     controller.current = abort;
     try {
       const contactBase = CONTACTS.find((c) => c.id === fields.contact) || CONTACTS[0];
-      const contact = fields.contact === "other"
-        ? { ...contactBase, name: fields.otherContactName || "Other" }
-        : contactBase;
+      const contact = proof
+        ? { id: "customer", name: fields.name || "Customer", email: fields.customerEmail }
+        : fields.contact === "other"
+          ? { ...contactBase, name: fields.otherContactName || "Other" }
+          : contactBase;
       const fingerprints = await Promise.all(files.map(fingerprint));
       let session = active.current;
       if (session && JSON.stringify(session.fingerprints) !== JSON.stringify(fingerprints)) {
@@ -160,16 +166,21 @@ export default function Uploader({ employee = null, onComplete, showHero = true,
       }
       if (!session) {
         const messageParts = [];
-        if (fields.name) messageParts.push(`From: ${fields.name}`);
+        if (proof) messageParts.push("Purpose: proof");
+        if (proof && employee?.name) messageParts.push(`From: ${employee.name}`);
+        else if (fields.name) messageParts.push(`From: ${fields.name}`);
+        if (proof && fields.name) messageParts.push(`To: ${fields.name}`);
         if (fields.phone) messageParts.push(`Phone: ${fields.phone}`);
         if (fields.notes) messageParts.push(fields.notes);
         const created = await api("/api/transfers", {
           method: "POST",
           body: JSON.stringify({
-            senderEmail: fields.senderEmail,
-            recipientEmails: contact.email,
+            purpose: proof ? "proof" : "upload",
+            senderEmail: proof ? (employee?.email || fields.senderEmail) : fields.senderEmail,
+            recipientEmails: proof ? fields.customerEmail : contact.email,
             company: fields.company,
-            title: fields.jobNumber?.trim() || `File upload from ${fields.company || "client"}`,
+            title: fields.jobNumber?.trim()
+              || (proof ? `Design proof for ${fields.company || "customer"}` : `File upload from ${fields.company || "client"}`),
             message: messageParts.join("\n"),
             retentionDays: 30,
             passcode: "",
@@ -207,10 +218,11 @@ export default function Uploader({ employee = null, onComplete, showHero = true,
       const whenStr = now.toLocaleString("en-US", { weekday:"short", month:"short", day:"numeric", year:"numeric", hour:"numeric", minute:"2-digit" });
       setReceipt({
         ...result,
+        proof,
         url: result.url || `${window.location.origin}/transfer/${transferId}`,
         senderName: fields.name || "",
-        senderEmail: fields.senderEmail || "",
-        contactName: contact.name,
+        senderEmail: proof ? (fields.customerEmail || "") : (fields.senderEmail || ""),
+        contactName: proof ? (fields.name || fields.customerEmail || "the customer") : contact.name,
         jobNumber: fields.jobNumber?.trim() || "",
         uploadedFiles: files.map((f) => ({ name: f.name, size: f.size })),
         totalSize: files.reduce((s, f) => s + f.size, 0),
@@ -254,9 +266,10 @@ export default function Uploader({ employee = null, onComplete, showHero = true,
     return (
       <section className="card ok-card">
         <div className="ok-mark" aria-hidden="true">✓</div>
-        <h2>Got them. Thanks, {firstName}.</h2>
+        <h2>{receipt.proof ? "Proof sent." : `Got them. Thanks, ${firstName}.`}</h2>
         <p className="ok-sub">
-          {n} {n === 1 ? "file" : "files"}{totalFmt ? ` (${totalFmt})` : ""} {n === 1 ? "is" : "are"} with {receipt.contactName}.
+          {n} {n === 1 ? "file" : "files"}{totalFmt ? ` (${totalFmt})` : ""} {n === 1 ? "is" : "are"}{" "}
+          {receipt.proof ? `on the way to ${receipt.contactName}.` : `with ${receipt.contactName}.`}
         </p>
 
         <div className="receipt-badge">
@@ -278,13 +291,23 @@ export default function Uploader({ employee = null, onComplete, showHero = true,
           </div>
         )}
 
-        <p className="ok-line">A confirmation is on its way to <strong>{receipt.senderEmail}</strong>.</p>
+        <p className="ok-line">
+          {receipt.proof
+            ? <>A download link is on its way to <strong>{receipt.senderEmail}</strong>.</>
+            : <>A confirmation is on its way to <strong>{receipt.senderEmail}</strong>.</>}
+        </p>
+
+        {receipt.url && (
+          <ShareLink url={receipt.url} label={receipt.proof ? "Share URL for the customer" : "Share URL"} />
+        )}
 
         <div className="callout">
           <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" style={{ flexShrink: 0, marginTop: 1 }}>
             <circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 8h.01"/>
           </svg>
-          <p>No need to send these again. If you need to add or replace a file for this job, use the button below.</p>
+          <p>{receipt.proof
+            ? "The customer can open the private link to review and download. Send another proof below if you need to replace a file."
+            : "No need to send these again. If you need to add or replace a file for this job, use the button below."}</p>
         </div>
 
         <div className="ok-actions">
@@ -297,7 +320,7 @@ export default function Uploader({ employee = null, onComplete, showHero = true,
               setFilesDone(0);
               setNotice("");
               setError("");
-            }}>Send more files for this job</button>
+            }}>{receipt.proof ? "Send another proof" : "Send more files for this job"}</button>
           </div>
           <button className="text-button" onClick={() => {
             setReceipt(null); setFiles([]); setNotice(""); setError("");
@@ -319,8 +342,10 @@ export default function Uploader({ employee = null, onComplete, showHero = true,
       {showHero && (
         <section className={`hero${slimHero ? " slim" : ""}`}>
           <div className="hero-wrap">
-            <h1>Send your design files</h1>
-            <p>Drop your artwork here and it goes straight to your Aspen contact. Recipients get a private link and confirmation right away.</p>
+            <h1>{proof ? "Send a design proof" : "Send your design files"}</h1>
+            <p>{proof
+              ? "Upload the approved files and we email your customer a private download link."
+              : "Drop your artwork here and it goes straight to your Aspen contact. Recipients get a private link and confirmation right away."}</p>
           </div>
         </section>
       )}
@@ -377,17 +402,26 @@ export default function Uploader({ employee = null, onComplete, showHero = true,
           </div>
 
           <div>
-            <h2 className="col-title">Your details</h2>
+            <h2 className="col-title">{proof ? "Customer details" : "Your details"}</h2>
+            {proof && employee && (
+              <p className="muted fine-print" style={{ marginBottom: 12 }}>Sending as {employee.name || employee.email}. The customer gets the download link.</p>
+            )}
+            {proof && !employee?.email && (
+              <p className="error" role="alert">Your Microsoft account has no email on file, so a proof cannot be sent.</p>
+            )}
             <fieldset disabled={busy || Boolean(saved)}>
+              {proof && <input type="hidden" name="senderEmail" value={employee?.email || ""} />}
               <div className="row2">
                 <div className="field">
-                  <label>Your name<span className="req" aria-hidden="true">*</span>
-                    <input className="in" name="name" type="text" required maxLength={200} autoComplete="name" placeholder="Jordan Ellis" defaultValue={employee?.name || ""} />
+                  <label>{proof ? "Customer name" : "Your name"}<span className="req" aria-hidden="true">*</span>
+                    <input className="in" name="name" type="text" required maxLength={200} autoComplete="name" placeholder="Jordan Ellis" defaultValue={proof ? "" : (employee?.name || "")} />
                   </label>
                 </div>
                 <div className="field">
-                  <label>Email<span className="req" aria-hidden="true">*</span>
-                    <input className="in" name="senderEmail" type="email" required maxLength={254} autoComplete="email" placeholder="you@company.com" defaultValue={employee?.email || ""} />
+                  <label>{proof ? "Customer email" : "Email"}<span className="req" aria-hidden="true">*</span>
+                    {proof
+                      ? <input className="in" name="customerEmail" type="email" required maxLength={254} autoComplete="email" placeholder="jordan@company.com" />
+                      : <input className="in" name="senderEmail" type="email" required maxLength={254} autoComplete="email" placeholder="you@company.com" defaultValue={employee?.email || ""} />}
                   </label>
                 </div>
               </div>
@@ -403,20 +437,22 @@ export default function Uploader({ employee = null, onComplete, showHero = true,
                   </label>
                 </div>
               </div>
-              <div className="field">
-                <label>Who at Aspen are you working with?<span className="req" aria-hidden="true">*</span>
-                  <select className="in" name="contact" required defaultValue={urlPrefill.contact || ""}
-                    onChange={(e) => setOtherContact(e.target.value === "other")}>
-                    <option value="" disabled>Choose your contact</option>
-                    {CONTACTS.map((c) => (
-                      <option key={c.id} value={c.id}>
-                        {c.label || (c.role ? `${c.name} — ${c.role}` : c.name)}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-              </div>
-              {otherContact && (
+              {!proof && (
+                <div className="field">
+                  <label>Who at Aspen are you working with?<span className="req" aria-hidden="true">*</span>
+                    <select className="in" name="contact" required defaultValue={urlPrefill.contact || ""}
+                      onChange={(e) => setOtherContact(e.target.value === "other")}>
+                      <option value="" disabled>Choose your contact</option>
+                      {CONTACTS.map((c) => (
+                        <option key={c.id} value={c.id}>
+                          {c.label || (c.role ? `${c.name} — ${c.role}` : c.name)}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                </div>
+              )}
+              {!proof && otherContact && (
                 <div className="field">
                   <label>Their name<span className="req" aria-hidden="true">*</span>
                     <input className="in" name="otherContactName" type="text" required maxLength={100}
@@ -428,11 +464,11 @@ export default function Uploader({ employee = null, onComplete, showHero = true,
                 <label>Job or quote number <span className="opt">(optional)</span>
                   <input className="in" name="jobNumber" type="text" maxLength={100} placeholder="130912 or Q-48817" defaultValue={urlPrefill.jobNumber || ""} />
                 </label>
-                <p className="help">Found on your quote or proof</p>
+                <p className="help">{proof ? "Shown on the customer’s download email" : "Found on your quote or proof"}</p>
               </div>
               <div className="field">
-                <label>Notes for our team <span className="opt">(optional)</span>
-                  <textarea className="in" name="notes" rows={3} maxLength={2000} placeholder="Final art for the fall mailer. Reply card on its own page." />
+                <label>{proof ? "Note to the customer" : "Notes for our team"} <span className="opt">(optional)</span>
+                  <textarea className="in" name="notes" rows={3} maxLength={2000} placeholder={proof ? "Please review pages 2 and 3 and reply with approval." : "Final art for the fall mailer. Reply card on its own page."} />
                 </label>
               </div>
             </fieldset>
@@ -459,14 +495,14 @@ export default function Uploader({ employee = null, onComplete, showHero = true,
         {notice && <p className="banner" role="status">{notice}</p>}
 
         <div className="qd-foot">
-          <button type="submit" className="btn-primary" disabled={busy || !files.length}>
+          <button type="submit" className="btn-primary" disabled={busy || !files.length || (proof && !employee?.email)}>
             {busy
               ? (files.length > 1 ? `Sending… ${filesDone} of ${files.length} done` : "Sending…")
               : saved
                 ? "Resume upload"
                 : files.length > 0
-                  ? `Send ${files.length} file${files.length > 1 ? "s" : ""}`
-                  : "Send files"}
+                  ? `${proof ? "Send proof" : "Send"} · ${files.length} file${files.length > 1 ? "s" : ""}`
+                  : proof ? "Send design proof" : "Send files"}
           </button>
           {busy && (
             <div style={{ display: "flex", gap: 10, justifyContent: "center", marginTop: 10 }}>

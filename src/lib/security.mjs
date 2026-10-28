@@ -109,8 +109,9 @@ export function validateTransfer(input, limits = {}) {
     if (type && !/^[\w.+-]+\/[\w.+-]+$/.test(type)) fail(400, "Invalid file type.");
     return { name: name.normalize("NFC"), size: file.size, type: type || "application/octet-stream" };
   });
+  const purpose = input.purpose === "proof" ? "proof" : "upload";
   return { senderEmail, recipientEmails, title, company, message, retentionDays: input.retentionDays,
-    passcode, files, partSize: partSizeFor(Math.max(...files.map((file) => file.size))) };
+    passcode, files, purpose, partSize: partSizeFor(Math.max(...files.map((file) => file.size))) };
 }
 
 export async function makePasscodeHash(passcode) {

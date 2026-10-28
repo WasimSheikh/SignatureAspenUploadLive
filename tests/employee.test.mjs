@@ -237,15 +237,13 @@ test("sessions use token digests, DB fixed expiry, current group policy and no c
   } finally { process.env.ENTRA_CLIENT_SECRET = secret; }
 });
 
-test("ACLs query only complete live transfers and immutable employee IDs including admin policy", async () => {
+test("signed-in employees can open any complete live transfer", async () => {
   const queries = [];
   const client = { query: async (sql, values) => { queries.push({ sql, values }); return { rows: [{ id }] }; } };
   assert.equal(await employeeHasTransfer(client, { id: oid, admin: false }, id), true);
   assert.match(queries[0].sql, /status = 'complete' AND t.expires_at > now\(\)/);
-  assert.match(queries[0].sql, /a.employee_id = \$2::uuid/);
-  assert.deepEqual(queries[0].values, [id, oid, false]);
-  assert.equal(await employeeHasTransfer(client, { id: oid, admin: "true" }, id), true);
-  assert.equal(queries[1].values[2], false);
+  assert.ok(!queries[0].sql.includes("transfer_employee_access"));
+  assert.deepEqual(queries[0].values, [id]);
   assert.equal(await employeeHasTransfer(client, { id: oid, admin: true }, "bad"), false);
   const denied = { query: async () => ({ rows: [] }) };
   assert.equal(await employeeHasTransfer(denied, { id: oid, admin: false }, id), false);
@@ -292,7 +290,7 @@ test("authorized transfer, listing and sharing never expose upload credentials o
   });
 });
 
-test("blob explorer lists folders from object keys and stays ACL-scoped", async () => {
+test("blob explorer lists folders from object keys for every live transfer", async () => {
   const dated = {
     id: file.id, transfer_id: id, name: "Design.pdf", size: "20",
     object_key: `transfers/2026/10/27/${id}/${file.id}`,
@@ -328,7 +326,7 @@ test("blob explorer lists folders from object keys and stays ACL-scoped", async 
     assert.equal(leafBody.files[0].transferId, id);
     assert.equal(leafBody.crumbs.at(-1).label, "Company");
     assert.ok(!JSON.stringify(leafBody).includes("private"));
-    assert.match(browseSql, /a.employee_id = \$2::uuid/);
+    assert.ok(!browseSql.includes("transfer_employee_access"));
     assert.equal((await employeeBrowse(new Request(
       "https://example.com/api/employee/transfers/browse?path=staging",
       { headers: { cookie: sessionCookie } }))).status, 400);
@@ -371,7 +369,7 @@ test("blob explorer lists folders from object keys and stays ACL-scoped", async 
   assert.equal(matchesBrowseQuery(dated, "nope"), false);
 });
 
-test("dashboard statistics and calendar stay ACL-scoped on Houston dates", async () => {
+test("dashboard statistics and calendar list every live Houston-date transfer", async () => {
   let dashboardSql = "";
   await withQueries(async (sql) => {
     if (sql.includes("employee_sessions")) return { rows: [sessionRow] };
@@ -387,7 +385,7 @@ test("dashboard statistics and calendar stay ACL-scoped on Houston dates", async
     if (sql.includes("calendar_days")) {
       return { rows: [{ calendar_days: "2026-10-27", transfer_count: 1, file_count: 1, total_size: "20" }] };
     }
-    if (sql.includes("::date = $3::date")) {
+    if (sql.includes("::date = $1::date")) {
       return { rows: [{ ...transfer, sender_email: "sender@example.com", completed_at: new Date("2026-10-27T17:00:00Z") }] };
     }
     if (sql.startsWith("SELECT id,transfer_id")) return { rows: [file] };
@@ -406,7 +404,7 @@ test("dashboard statistics and calendar stay ACL-scoped on Houston dates", async
     assert.equal(body.companies[0].company, "Company");
     assert.equal(body.days[0].date, "2026-10-27");
     assert.equal(body.recent[0].files[0].name, "Design.pdf");
-    assert.match(dashboardSql, /a.employee_id = \$2::uuid/);
+    assert.ok(!dashboardSql.includes("transfer_employee_access"));
     const day = await employeeCalendar(new Request(
       "https://example.com/api/employee/transfers/calendar?date=2026-10-27",
       { headers: { cookie: sessionCookie } }));
@@ -432,7 +430,7 @@ test("unauthorized direct share/download and invalid pagination fail closed", as
   });
 });
 
-test("NAS-enabled transfers without a mirror row report pending and filename search stays ACL-scoped", async () => {
+test("NAS-enabled transfers without a mirror row report pending and filename search stays company-wide", async () => {
   const original = process.env.NAS_ENABLED;
   process.env.NAS_ENABLED = "true";
   let listingSql;
@@ -448,8 +446,8 @@ test("NAS-enabled transfers without a mirror row report pending and filename sea
       const result = await response.json();
       assert.equal(result.transfers[0].nasStatus, "pending");
       assert.match(listingSql, /FROM transfer_files f WHERE f.transfer_id = t.id/);
-      assert.match(listingSql, /position\(lower\(\$3\) in lower\(f.name\)\)/);
-      assert.match(listingSql, /a.employee_id = \$2::uuid/);
+      assert.match(listingSql, /position\(lower\(\$1\) in lower\(f.name\)\)/);
+      assert.ok(!listingSql.includes("transfer_employee_access"));
     });
   } finally {
     if (original === undefined) delete process.env.NAS_ENABLED;

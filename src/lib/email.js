@@ -9,6 +9,10 @@ export function publicUrl(id) {
   return `${config().appUrl}/transfer/${id}`;
 }
 
+export function isProofTransfer(transfer) {
+  return transfer?.purpose === "proof" || /(^|\n)Purpose: proof(\n|$)/i.test(transfer?.message || "");
+}
+
 export function dashboardUrl(origin = config().appUrl) {
   return `${origin}/dashboard`;
 }
@@ -78,6 +82,7 @@ function parseMessage(raw) {
   for (const line of lines) {
     if (line.startsWith("From: ")) name = line.slice(6).trim();
     else if (line.startsWith("Phone: ")) phone = line.slice(7).trim();
+    else if (line.startsWith("Purpose: ") || line.startsWith("To: ")) continue;
     else if (line.trim()) notes.push(line.trim());
   }
   return { name, phone, notes: notes.join("\n") };
@@ -298,6 +303,48 @@ function internalHtml(transfer, files, receipt, contactName) {
   return emailWrap(body, COMMON_FOOTER);
 }
 
+// ── Employee → customer design proof ──────────────────────────────────────────
+
+function proofHtml(transfer, files, receipt, employeeName) {
+  const { notes } = parseMessage(transfer.message);
+  const url = publicUrl(transfer.id);
+  const totalBytes = files.reduce((s, f) => s + Number(f.size), 0);
+  const fileRows = files.map((f) =>
+    `<tr>
+      <td style="padding:9px 0;border-bottom:1px solid ${LINE};font-size:14px;font-family:${FONT};color:#1A1A1A">${escapeHtml(f.name)}</td>
+      <td style="padding:9px 0;border-bottom:1px solid ${LINE};font-size:14px;font-family:${FONT};color:${MUTED};white-space:nowrap;text-align:right">${fmtSize(Number(f.size))}</td>
+    </tr>`
+  ).join("");
+
+  const body = `
+    <h1 style="font-family:Georgia,serif;font-weight:700;color:${NAVY};font-size:28px;line-height:1.15;margin:0 0 12px 0">Your design proof is ready.</h1>
+    ${p(`${escapeHtml(employeeName)} at Signature Aspen sent ${files.length} file${files.length !== 1 ? "s" : ""}${transfer.title ? ` for <b>${escapeHtml(transfer.title)}</b>` : ""}.`)}
+    ${notes ? `<div style="margin:0 0 18px 0;border-left:3px solid ${GREEN};padding:4px 0 4px 14px">
+      <div style="font-size:11px;font-weight:600;letter-spacing:.07em;text-transform:uppercase;color:${MUTED};margin-bottom:4px;font-family:${FONT}">A note from ${escapeHtml(employeeName)}</div>
+      <p style="margin:0;font-size:15px;color:#27324a;font-family:${FONT};white-space:pre-wrap">${escapeHtml(notes)}</p>
+    </div>` : ""}
+
+    <table width="100%" cellpadding="0" cellspacing="0" border="0" role="presentation" style="border:1px solid ${LINE};border-radius:10px;margin:0 0 20px 0">
+    <tr><td style="padding:2px 16px">
+      <table width="100%" cellpadding="0" cellspacing="0" border="0" role="presentation">
+        ${fileRows}
+        <tr>
+          <td style="padding:9px 0;font-size:14px;font-weight:700;font-family:${FONT};color:#1A1A1A">Total, ${files.length} file${files.length !== 1 ? "s" : ""}</td>
+          <td style="padding:9px 0;font-size:14px;font-weight:700;font-family:${FONT};color:#1A1A1A;text-align:right">${fmtSize(totalBytes)}</td>
+        </tr>
+      </table>
+    </td></tr>
+    </table>
+
+    ${btnGreen(url, "Open your proof")}
+    <p style="font-size:13px;color:${MUTED};margin:14px 0 0 0;font-family:${FONT}">Receipt ${escapeHtml(receipt)}. Questions? Reply to this email and it goes to ${escapeHtml(employeeName)}.</p>`;
+
+  const footer = `${COMMON_FOOTER}
+    <p style="margin:8px 0 0 0;font-size:11px;color:${MUTED};font-family:${FONT}">You got this email because Signature Aspen sent you a design proof${transfer.company ? ` for ${escapeHtml(transfer.company)}` : ""}.</p>`;
+
+  return emailWrap(body, footer);
+}
+
 // ── Email 2: Upload request link ──────────────────────────────────────────────
 
 function uploadRequestHtml(contact, customer, job, appUrl) {
@@ -477,9 +524,10 @@ export async function sendTransferEmails(client, transfer, reminder = false) {
 
   const recipientEmails = Array.isArray(transfer.recipient_emails) ? transfer.recipient_emails : JSON.parse(transfer.recipient_emails || "[]");
   const contactEmail = recipientEmails[0] || settings.internalEmails[0] || "";
-  const contactName = contactEmail
-    ? contactEmail.split("@")[0].replace(/[._-]/g, " ").replace(/\b\w/g, (c) => c.toUpperCase())
-    : "the Aspen team";
+  const parsed = parseMessage(transfer.message);
+  const contactName = parsed.name
+    || (contactEmail ? contactEmail.split("@")[0].replace(/[._-]/g, " ").replace(/\b\w/g, (c) => c.toUpperCase()) : "the Aspen team");
+  const proof = isProofTransfer(transfer);
 
   if (!reminder && transfer.email_attempted_at &&
       Date.now() - new Date(transfer.email_attempted_at).getTime() > 23 * 60 * 60 * 1000 &&
@@ -492,41 +540,79 @@ export async function sendTransferEmails(client, transfer, reminder = false) {
   }
 
   let success = true;
+  const employeeName = parsed.name || transfer.sender_email || "Signature Aspen";
 
-  if (!reminder) {
-    const key = `delivery-customer-${hashToken(transfer.sender_email).slice(0, 32)}`;
-    if (results[key] !== "sent") {
+  if (proof) {
+    for (const recipient of recipientEmails.filter(Boolean)) {
+      const kind = reminder ? "proof-reminder" : "proof-customer";
+      const key = `${kind}-${hashToken(recipient).slice(0, 32)}`;
+      if (results[key] === "sent") continue;
       try {
-        const subject = `We got your files${transfer.title ? ` for ${transfer.title}` : ""}`;
-        const html = customerHtml(transfer, files, receipt, contactName);
-        const text = `Your files are in.\n\nReceipt: ${receipt}\nJob: ${transfer.title || ""}\n${files.map((f) => `- ${f.name} (${fmtSize(Number(f.size))})`).join("\n")}\n\nView transfer: ${publicUrl(transfer.id)}`;
-        await sendOne(transfer.sender_email, subject, html, text, contactEmail || undefined);
+        const subject = reminder
+          ? `Reminder: your design proof expires soon${transfer.title ? ` — ${transfer.title}` : ""}`
+          : `Your design proof is ready${transfer.title ? ` — ${transfer.title}` : ""}`;
+        const html = proofHtml(transfer, files, receipt, employeeName);
+        const text = `${employeeName} at Signature Aspen sent a design proof.\n\nJob: ${transfer.title || ""}\n${files.map((f) => `- ${f.name} (${fmtSize(Number(f.size))})`).join("\n")}\n\nOpen your proof: ${publicUrl(transfer.id)}`;
+        await sendOne(recipient, subject, html, text, transfer.sender_email || undefined);
         results[key] = "sent";
         await client.query("UPDATE transfers SET email_results = $2::jsonb WHERE id = $1", [transfer.id, JSON.stringify(results)]);
       } catch {
         success = false;
-        console.error("Customer confirmation email failed.");
+        console.error("Design proof email failed.");
       }
     }
-  }
+    if (!reminder && transfer.sender_email) {
+      const key = `proof-sender-${hashToken(transfer.sender_email).slice(0, 32)}`;
+      if (results[key] !== "sent") {
+        try {
+          const subject = `Proof sent${transfer.title ? ` — ${transfer.title}` : ""}`;
+          const html = internalHtml(transfer, files, receipt, employeeName);
+          const text = `You sent a design proof to ${recipientEmails.join(", ")}.\n\nView: ${publicUrl(transfer.id)}`;
+          await sendOne(transfer.sender_email, subject, html, text);
+          results[key] = "sent";
+          await client.query("UPDATE transfers SET email_results = $2::jsonb WHERE id = $1", [transfer.id, JSON.stringify(results)]);
+        } catch {
+          success = false;
+          console.error("Design proof confirmation email failed.");
+        }
+      }
+    }
+  } else {
+    if (!reminder) {
+      const key = `delivery-customer-${hashToken(transfer.sender_email).slice(0, 32)}`;
+      if (results[key] !== "sent") {
+        try {
+          const subject = `We got your files${transfer.title ? ` for ${transfer.title}` : ""}`;
+          const html = customerHtml(transfer, files, receipt, contactName);
+          const text = `Your files are in.\n\nReceipt: ${receipt}\nJob: ${transfer.title || ""}\n${files.map((f) => `- ${f.name} (${fmtSize(Number(f.size))})`).join("\n")}\n\nView transfer: ${publicUrl(transfer.id)}`;
+          await sendOne(transfer.sender_email, subject, html, text, contactEmail || undefined);
+          results[key] = "sent";
+          await client.query("UPDATE transfers SET email_results = $2::jsonb WHERE id = $1", [transfer.id, JSON.stringify(results)]);
+        } catch {
+          success = false;
+          console.error("Customer confirmation email failed.");
+        }
+      }
+    }
 
-  const internalRecipients = [...new Set([...recipientEmails, ...settings.internalEmails])].filter(Boolean);
-  for (const recipient of internalRecipients) {
-    const kind = reminder ? "reminder" : "internal";
-    const key = `${kind}-${hashToken(recipient).slice(0, 32)}`;
-    if (results[key] === "sent") continue;
-    try {
-      const subject = reminder
-        ? `Reminder: files expiring soon — ${transfer.company || transfer.title || "transfer"}`
-        : `New files: ${transfer.company || ""}${transfer.title ? `, ${transfer.title}` : ""} (${files.length} file${files.length !== 1 ? "s" : ""}, ${fmtSize(files.reduce((s, f) => s + Number(f.size), 0))})`;
-      const html = internalHtml(transfer, files, receipt, contactName);
-      const text = `New files from ${transfer.sender_email}\nJob: ${transfer.title}\n${files.map((f) => `- ${f.name} (${fmtSize(Number(f.size))})`).join("\n")}\n\nView: ${publicUrl(transfer.id)}`;
-      await sendOne(recipient, subject, html, text);
-      results[key] = "sent";
-      await client.query("UPDATE transfers SET email_results = $2::jsonb WHERE id = $1", [transfer.id, JSON.stringify(results)]);
-    } catch {
-      success = false;
-      console.error("Internal alert email failed.");
+    const internalRecipients = [...new Set([...recipientEmails, ...settings.internalEmails])].filter(Boolean);
+    for (const recipient of internalRecipients) {
+      const kind = reminder ? "reminder" : "internal";
+      const key = `${kind}-${hashToken(recipient).slice(0, 32)}`;
+      if (results[key] === "sent") continue;
+      try {
+        const subject = reminder
+          ? `Reminder: files expiring soon — ${transfer.company || transfer.title || "transfer"}`
+          : `New files: ${transfer.company || ""}${transfer.title ? `, ${transfer.title}` : ""} (${files.length} file${files.length !== 1 ? "s" : ""}, ${fmtSize(files.reduce((s, f) => s + Number(f.size), 0))})`;
+        const html = internalHtml(transfer, files, receipt, contactName);
+        const text = `New files from ${transfer.sender_email}\nJob: ${transfer.title}\n${files.map((f) => `- ${f.name} (${fmtSize(Number(f.size))})`).join("\n")}\n\nView: ${publicUrl(transfer.id)}`;
+        await sendOne(recipient, subject, html, text);
+        results[key] = "sent";
+        await client.query("UPDATE transfers SET email_results = $2::jsonb WHERE id = $1", [transfer.id, JSON.stringify(results)]);
+      } catch {
+        success = false;
+        console.error("Internal alert email failed.");
+      }
     }
   }
 

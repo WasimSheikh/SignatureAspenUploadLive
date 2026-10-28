@@ -105,10 +105,10 @@ The sign-in flow uses authorization code + PKCE, nonce/state validation, and sig
 
 ### Employee permissions
 
-- Ordinary employees see **their own authenticated uploads and explicitly assigned transfers only**, not every client transfer.
-- Administrators see all completed, unexpired transfers and can assign a transfer by an employee's Entra object ID in the dashboard. Do not assign by sender/recipient email; those fields are user-supplied.
-- The server enforces access independently on listing, share links, cloud downloads, and local-download URL issuance. Employee downloads can access an assigned protected transfer without entering its public-link passcode; public recipients still need that passcode.
-- Anonymous uploads are initially unassigned and appear in the administrator library. Employees must belong to the approved group even when an administrator assigns them.
+- Any signed-in employee sees **every completed, unexpired transfer** on the dashboard, calendar, job list, and file explorer.
+- Administrators can still assign a transfer by an employee's Entra object ID in the dashboard. Do not assign by sender/recipient email; those fields are user-supplied.
+- The server still requires employee sign-in for listing, share links, cloud downloads, and local-download URL issuance. Employee downloads can open a protected transfer without the public-link passcode; public recipients still need that passcode.
+- Employees must belong to an approved Microsoft group. Sessions are required; expired transfers stay hidden.
 - Sessions are opaque, stored as hashes, HTTP-only, and expire after eight hours. Group claims are rechecked against configured allowlists on requests, but directory membership changes require a new login to refresh. For immediate revocation, remove that employee's rows from `employee_sessions`; sign-out revokes the current session. Protect administrative DB access and avoid long sessions if your policy requires faster directory revocation.
 - Public share links remain bearer links, not employee-only links. Sharing does not reveal the passcode, and employee access does not change public-link expiration.
 

@@ -10,10 +10,7 @@ const transferIdPattern = /^[A-Za-z0-9_-]{32}$/;
 export async function employeeHasTransfer(client, employee, id) {
   if (!employee?.id || !transferIdPattern.test(id)) return false;
   const { rows } = await client.query(`SELECT t.id FROM transfers t
-    WHERE t.id = $1 AND t.status = 'complete' AND t.expires_at > now()
-    AND ($3::boolean OR EXISTS (
-      SELECT 1 FROM transfer_employee_access a WHERE a.transfer_id = t.id AND a.employee_id = $2::uuid
-    ))`, [id, employee.id, employee.admin === true]);
+    WHERE t.id = $1 AND t.status = 'complete' AND t.expires_at > now()`, [id]);
   return rows.length > 0;
 }
 
@@ -48,15 +45,12 @@ export const employeeTransfers = employeeEndpoint(async (request) => {
   if (query.length > 200) fail(400, "Search is too long.");
   const { rows } = await client.query(`SELECT t.id,t.title,t.company,t.sender_email,t.expires_at
     FROM transfers t WHERE t.status = 'complete' AND t.expires_at > now()
-    AND ($1::boolean OR EXISTS (
-      SELECT 1 FROM transfer_employee_access a WHERE a.transfer_id = t.id AND a.employee_id = $2::uuid
-    ))
-    AND ($3 = '' OR position(lower($3) in lower(t.title)) > 0
-      OR position(lower($3) in lower(t.company)) > 0
+    AND ($1 = '' OR position(lower($1) in lower(t.title)) > 0
+      OR position(lower($1) in lower(t.company)) > 0
       OR EXISTS (SELECT 1 FROM transfer_files f WHERE f.transfer_id = t.id
-        AND position(lower($3) in lower(f.name)) > 0))
-    ORDER BY t.created_at DESC,t.id DESC LIMIT 21 OFFSET $4`,
-  [employee.admin, employee.id, query, (page - 1) * 20]);
+        AND position(lower($1) in lower(f.name)) > 0))
+    ORDER BY t.created_at DESC,t.id DESC LIMIT 21 OFFSET $2`,
+  [query, (page - 1) * 20]);
   const visible = rows.slice(0, 20);
   const ids = visible.map((row) => row.id);
   const files = ids.length ? (await client.query(`SELECT id,transfer_id,name,size FROM transfer_files
@@ -74,10 +68,6 @@ export const employeeTransfers = employeeEndpoint(async (request) => {
       canShare: true };
   }), page, hasMore: rows.length > 20 });
 });
-
-const ACCESS_SQL = `AND ($1::boolean OR EXISTS (
-      SELECT 1 FROM transfer_employee_access a WHERE a.transfer_id = t.id AND a.employee_id = $2::uuid
-    ))`;
 
 const MONTHS = ["January", "February", "March", "April", "May", "June",
   "July", "August", "September", "October", "November", "December"];
@@ -248,8 +238,7 @@ export const employeeBrowse = employeeEndpoint(async (request) => {
     JOIN transfers t ON t.id = f.transfer_id
     WHERE t.status = 'complete' AND t.expires_at > now()
     AND f.object_key LIKE 'transfers/%'
-    ${ACCESS_SQL}
-    ORDER BY f.object_key LIMIT 5000`, [employee.admin, employee.id]);
+    ORDER BY f.object_key LIMIT 5000`);
   const visible = query ? rows.filter((row) => matchesBrowseQuery(row, query)) : rows;
   const compareFiles = (a, b) => a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: "base" });
 
@@ -354,7 +343,6 @@ export const employeeDashboard = employeeEndpoint(async (request) => {
   const client = employeeDatabase();
   const employee = await requireEmployee(request, client);
   const { year, month, key } = parseMonth(new URL(request.url).searchParams.get("month"));
-  const access = [employee.admin, employee.id];
   const monthStart = `${key}-01`;
   const [statsResult, filesResult, recentResult, companiesResult, daysResult] = await Promise.all([
     client.query(`SELECT count(*)::int AS transfers,
@@ -364,31 +352,26 @@ export const employeeDashboard = employeeEndpoint(async (request) => {
           = date_trunc('month', now() AT TIME ZONE '${COMPANY_TZ}'))::int AS this_month,
         count(*) FILTER (WHERE t.expires_at <= now() + interval '7 days')::int AS expiring,
         count(DISTINCT nullif(btrim(t.company), ''))::int AS companies
-      FROM transfers t WHERE t.status = 'complete' AND t.expires_at > now()
-      ${ACCESS_SQL}`, access),
+      FROM transfers t WHERE t.status = 'complete' AND t.expires_at > now()`),
     client.query(`SELECT count(f.id)::int AS files, coalesce(sum(f.size), 0)::bigint AS total_size
       FROM transfer_files f JOIN transfers t ON t.id = f.transfer_id
-      WHERE t.status = 'complete' AND t.expires_at > now()
-      ${ACCESS_SQL}`, access),
+      WHERE t.status = 'complete' AND t.expires_at > now()`),
     client.query(`SELECT t.id, t.title, t.company, t.sender_email, t.expires_at, t.completed_at
       FROM transfers t WHERE t.status = 'complete' AND t.expires_at > now()
-      ${ACCESS_SQL}
-      ORDER BY t.completed_at DESC NULLS LAST, t.id DESC LIMIT 8`, access),
+      ORDER BY t.completed_at DESC NULLS LAST, t.id DESC LIMIT 8`),
     client.query(`SELECT coalesce(nullif(btrim(t.company), ''), 'Untitled company') AS company,
         count(*)::int AS transfers
       FROM transfers t WHERE t.status = 'complete' AND t.expires_at > now()
-      ${ACCESS_SQL}
-      GROUP BY 1 ORDER BY transfers DESC, company ASC LIMIT 8`, access),
+      GROUP BY 1 ORDER BY transfers DESC, company ASC LIMIT 8`),
     client.query(`SELECT (t.completed_at AT TIME ZONE '${COMPANY_TZ}')::date AS calendar_days,
         count(DISTINCT t.id)::int AS transfer_count,
         count(f.id)::int AS file_count,
         coalesce(sum(f.size), 0)::bigint AS total_size
       FROM transfers t JOIN transfer_files f ON f.transfer_id = t.id
       WHERE t.status = 'complete' AND t.expires_at > now()
-      ${ACCESS_SQL}
-      AND (t.completed_at AT TIME ZONE '${COMPANY_TZ}') >= $3::date
-      AND (t.completed_at AT TIME ZONE '${COMPANY_TZ}') < ($3::date + interval '1 month')
-      GROUP BY 1 ORDER BY 1`, [...access, monthStart]),
+      AND (t.completed_at AT TIME ZONE '${COMPANY_TZ}') >= $1::date
+      AND (t.completed_at AT TIME ZONE '${COMPANY_TZ}') < ($1::date + interval '1 month')
+      GROUP BY 1 ORDER BY 1`, [monthStart]),
   ]);
   const stats = statsResult.rows[0] || {};
   const fileStats = filesResult.rows[0] || {};
@@ -422,9 +405,8 @@ export const employeeCalendar = employeeEndpoint(async (request) => {
   const date = parseDay(new URL(request.url).searchParams.get("date"));
   const { rows } = await client.query(`SELECT t.id, t.title, t.company, t.sender_email, t.expires_at, t.completed_at
     FROM transfers t WHERE t.status = 'complete' AND t.expires_at > now()
-    ${ACCESS_SQL}
-    AND (t.completed_at AT TIME ZONE '${COMPANY_TZ}')::date = $3::date
-    ORDER BY t.completed_at DESC, t.id DESC LIMIT 200`, [employee.admin, employee.id, date]);
+    AND (t.completed_at AT TIME ZONE '${COMPANY_TZ}')::date = $1::date
+    ORDER BY t.completed_at DESC, t.id DESC LIMIT 200`, [date]);
   return employeeJson({ date, label: dateLabel(date), transfers: await filesForTransfers(client, rows) });
 });
 

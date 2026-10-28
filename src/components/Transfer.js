@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import ShareLink from "./ShareLink";
 
 const formatSize = (bytes) => bytes < 1024 ** 2
   ? `${(bytes / 1024).toFixed(0)} KB`
@@ -22,6 +23,8 @@ export default function Transfer({ id }) {
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const path = `/api/transfers/${encodeURIComponent(id)}`;
+  const [shareUrl, setShareUrl] = useState("");
+  useEffect(() => { setShareUrl(`${window.location.origin}/transfer/${id}`); }, [id]);
 
   useEffect(() => {
     const abort = new AbortController();
@@ -97,6 +100,7 @@ export default function Transfer({ id }) {
           {busy ? "Unlocking…" : "Unlock transfer"}
         </button>
       </form>
+      <ShareLink url={shareUrl} label="Share URL" />
     </div>
   );
 
@@ -115,6 +119,7 @@ export default function Transfer({ id }) {
           <span>{transfer.senderEmail}</span>
           {expiresStr && <span>Expires {expiresStr}</span>}
         </div>
+        <ShareLink url={shareUrl} label="Share URL" />
       </div>
 
       {/* Message */}

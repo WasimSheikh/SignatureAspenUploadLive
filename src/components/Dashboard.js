@@ -80,7 +80,7 @@ function TransferList({ transfers, action, onShare, employee, onAssign, onLocal,
   ));
 }
 
-const DASHBOARD_TABS = new Set(["overview", "calendar", "files", "browse", "upload"]);
+const DASHBOARD_TABS = new Set(["overview", "calendar", "files", "browse", "upload", "proof"]);
 
 function WorkspaceBody({ employee, initialTab = "overview" }) {
   const [tab, setTab] = useState(DASHBOARD_TABS.has(initialTab) ? initialTab : "overview");
@@ -180,17 +180,23 @@ function WorkspaceBody({ employee, initialTab = "overview" }) {
         <div>
           <p className="eyebrow">SIGNATURE ASPEN WORKSPACE</p>
           <h1>Dashboard</h1>
-          <p className="muted">{employee.admin ? "Company-wide transfer access" : "Your uploads and assigned transfers"}</p>
+          <p className="muted">All live transfers</p>
         </div>
-        <button type="button" className="btn-request" onClick={() => { setReqModal(true); setReqSuccess(false); setReqError(""); }}>
-          Request files from customer
-        </button>
+        <div className="heading-actions">
+          <button type="button" className="btn-proof" onClick={() => setTab("proof")}>
+            Send design proof
+          </button>
+          <button type="button" className="btn-request" onClick={() => { setReqModal(true); setReqSuccess(false); setReqError(""); }}>
+            Request files from customer
+          </button>
+        </div>
       </div>
       <div className="tabs" aria-label="Workspace sections">
         <button type="button" className={tab === "overview" ? "" : "secondary"} aria-pressed={tab === "overview"} onClick={() => setTab("overview")}>Overview</button>
         <button type="button" className={tab === "calendar" ? "" : "secondary"} aria-pressed={tab === "calendar"} onClick={() => setTab("calendar")}>Calendar</button>
         <button type="button" className={tab === "files" ? "" : "secondary"} aria-pressed={tab === "files"} onClick={() => setTab("files")}>Job list</button>
         <button type="button" className={tab === "browse" ? "" : "secondary"} aria-pressed={tab === "browse"} onClick={() => setTab("browse")}>File explorer</button>
+        <button type="button" className={tab === "proof" ? "" : "secondary"} aria-pressed={tab === "proof"} onClick={() => setTab("proof")}>Send proof</button>
         <button type="button" className={tab === "upload" ? "" : "secondary"} aria-pressed={tab === "upload"} onClick={() => setTab("upload")}>Quick upload</button>
       </div>
 
@@ -325,6 +331,17 @@ function WorkspaceBody({ employee, initialTab = "overview" }) {
       )}
 
       {tab === "browse" && <FileBrowser />}
+      <div hidden={tab !== "proof"}>
+        <section className="card dashboard" style={{ marginBottom: 0, boxShadow: "none", border: 0, padding: 0 }}>
+          <div className="card-heading">
+            <div>
+              <h2>Send design proof</h2>
+              <p className="muted cal-lead">Same upload form. Files go to the customer with a private download link.</p>
+            </div>
+          </div>
+        </section>
+        <Uploader employee={employee} mode="proof" showHero={false} onComplete={() => setRevision((value) => value + 1)} />
+      </div>
       <div hidden={tab !== "upload"}>
         <Uploader employee={employee} showHero={false} onComplete={() => setRevision((value) => value + 1)} />
       </div>
@@ -346,9 +363,7 @@ function WorkspaceBody({ employee, initialTab = "overview" }) {
           <p className="job-empty">
             {query
               ? "No transfers match that search."
-              : employee.admin
-                ? "No live transfers yet. Client uploads will appear here once complete."
-                : "No transfers assigned to you yet. Upload files or ask an administrator to assign a job."}
+              : "No live transfers yet. Client uploads will appear here once complete."}
           </p>
         )}
         {!loading && !error && result?.transfers.length > 0 && (

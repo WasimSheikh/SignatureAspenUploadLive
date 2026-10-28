@@ -25,6 +25,9 @@ test("normalizes emails and accepts every supported extension", () => {
   assert.deepEqual(result.recipientEmails, ["one@example.com"]);
   assert.equal(result.files.length, 6);
   assert.equal(result.partSize, BASE_PART_SIZE);
+  assert.equal(result.purpose, "upload");
+  assert.equal(validateTransfer(input({ purpose: "proof" })).purpose, "proof");
+  assert.equal(validateTransfer(input({ purpose: "nope" })).purpose, "upload");
 });
 
 test("accepts more than 10GB and enforces configurable transfer aggregate and file count limits", () => {

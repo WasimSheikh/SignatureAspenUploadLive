@@ -7,6 +7,7 @@ import { randomId, hashToken, validateTransfer, makePasscodeHash, verifyPasscode
 import { initiateFile, signPart, listParts, completeFile, removeFile, requireAzure, dateObjectKey } from "./storage.js";
 import { sendTransferEmails, publicUrl } from "./email.js";
 import { recordEmployeeUpload } from "./employees.js";
+import { readEmployeeSession } from "./employee-auth.js";
 
 async function transferId(context) {
   const { id } = await context.params;
@@ -21,6 +22,14 @@ function uploadFile(file) {
 export const createTransfer = endpoint(async (request) => {
   requireOrigin(request);
   const input = validateTransfer(await readJson(request), config());
+  if (input.purpose === "proof") {
+    const employee = await readEmployeeSession(request);
+    if (!employee) fail(401, "Employee sign-in is required to send a design proof.");
+    if (employee.email) input.senderEmail = employee.email;
+    if (!/(^|\n)Purpose: proof(\n|$)/i.test(input.message)) {
+      input.message = `Purpose: proof${input.message ? `\n${input.message}` : ""}`;
+    }
+  }
   const id = randomId();
   const uploadToken = randomId();
   const passcodeHash = await makePasscodeHash(input.passcode);

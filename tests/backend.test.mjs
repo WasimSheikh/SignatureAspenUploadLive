@@ -93,6 +93,13 @@ test("API errors are safe and all JSON responses prohibit caching", async () => 
   }
 });
 
+test("proof transfers send the customer a download link, not the inbound confirmation", async () => {
+  const { isProofTransfer } = await import("../src/lib/email.js");
+  assert.equal(isProofTransfer({ message: "Purpose: proof\nFrom: Wasim Sheikh" }), true);
+  assert.equal(isProofTransfer({ purpose: "proof" }), true);
+  assert.equal(isProofTransfer({ message: "From: Jordan\nFinal art" }), false);
+});
+
 test("staff and customer email links go to dashboard, transfer, or prefilled upload", async () => {
   const { dashboardUrl, dashboardUploadsUrl, publicUrl, uploadRequestUrl } = await import("../src/lib/email.js");
   assert.equal(dashboardUrl("https://files.example"), "https://files.example/dashboard");
