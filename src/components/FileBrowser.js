@@ -209,29 +209,35 @@ export default function FileBrowser() {
       {!loading && listing && (folders.length > 0 || files.length > 0) && (
         <div className="ex-layout">
           <aside className="ex-tree" aria-label="Folder tree">
-            {crumbs.map((crumb, index) => (
-              <button
-                key={`tree-${crumb.path}-${index}`}
-                type="button"
-                className={`ex-tree-item${(group === "folder" ? crumb.path === path : (index === 0 ? !key : crumb.path === key)) ? " on" : ""}`}
-                style={{ paddingLeft: 12 + index * 14 }}
-                onClick={() => openCrumb(crumb, index)}
-              >
-                <FolderIcon />
-                <span>{crumb.label}</span>
-              </button>
-            ))}
-            {folders.map((folder) => (
-              <button
-                key={folder.path}
-                type="button"
-                className="ex-tree-item"
-                style={{ paddingLeft: 12 + crumbs.length * 14 }}
-                onClick={() => openFolder(folder)}
-              >
-                <FolderIcon />
-                <span>{folder.label}</span>
-              </button>
+            {crumbs.map((crumb, index) => {
+              const isActive = group === "folder" ? crumb.path === path : (index === 0 ? !key : crumb.path === key);
+              const isLast = index === crumbs.length - 1;
+              const indent = 8 + index * 16;
+              return (
+                <button key={`tree-${crumb.path}-${index}`} type="button"
+                  className={`ex-tree-item${isActive ? " on" : ""}`}
+                  style={{ paddingLeft: indent }}
+                  onClick={() => openCrumb(crumb, index)}>
+                  {index > 0 && <span className="ex-connector" style={{ left: indent - 16 }} aria-hidden="true" />}
+                  <span className="ex-toggle" aria-hidden="true">{isLast ? "−" : "▾"}</span>
+                  <FolderIcon />
+                  <span className="ex-tree-label">{crumb.label}</span>
+                </button>
+              );
+            })}
+            {folders.map((folder) => {
+              const indent = 8 + crumbs.length * 16;
+              return (
+                <button key={folder.path} type="button" className="ex-tree-item"
+                  style={{ paddingLeft: indent }}
+                  onClick={() => openFolder(folder)}>
+                  <span className="ex-connector" style={{ left: indent - 16 }} aria-hidden="true" />
+                  <span className="ex-toggle" aria-hidden="true">+</span>
+                  <FolderIcon />
+                  <span className="ex-tree-label">{folder.label}</span>
+                </button>
+              );
+            })
             ))}
           </aside>
 

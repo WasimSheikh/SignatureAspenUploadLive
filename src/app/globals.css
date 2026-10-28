@@ -301,10 +301,12 @@ footer a { color: inherit; }
 .ex-crumb.on { color: var(--ink); cursor: default; }
 .ex-layout { display: grid; grid-template-columns: minmax(220px, 260px) minmax(0, 1fr); gap: 16px; align-items: start; }
 .ex-tree { border: 1px solid var(--line); border-radius: 10px; background: #FAFBFD; padding: 8px 0; overflow: hidden; }
-.ex-tree-item { display: flex; align-items: center; gap: 8px; width: 100%; background: none; border: 0; border-radius: 0; padding: 8px 12px; font: inherit; font-size: 13px; font-weight: 500; color: var(--navy); text-align: left; cursor: pointer; }
-.ex-tree-item span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ex-tree-item { display: flex; align-items: center; justify-content: flex-start; gap: 6px; width: 100%; background: none; border: 0; border-radius: 0; padding: 7px 12px 7px 8px; font: inherit; font-size: 13px; font-weight: 500; color: var(--navy); text-align: left; cursor: pointer; position: relative; }
 .ex-tree-item:hover { background: var(--green-50); }
 .ex-tree-item.on { background: #E6EDF6; font-weight: 600; }
+.ex-tree-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; }
+.ex-toggle { flex: none; width: 14px; font-size: 11px; font-weight: 700; color: var(--muted); text-align: center; line-height: 1; font-family: monospace; }
+.ex-connector { position: absolute; top: 0; bottom: 0; width: 1px; background: var(--line); pointer-events: none; }
 .ex-icon { width: 20px; height: 20px; flex: none; display: block; }
 .ex-table-wrap { overflow-x: auto; border: 1px solid var(--line); border-radius: 10px; }
 .ex-table { width: 100%; border-collapse: collapse; table-layout: fixed; font-size: 14px; }
