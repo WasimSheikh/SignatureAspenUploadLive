@@ -34,11 +34,15 @@ function formatModified(value) {
   });
 }
 
+const ICON_BG  = { pdf:"#F4CDC8", zip:"#CFE6BF", art:"#C5D4E8", img:"#F0D9A6", other:"#E2E7EE" };
+const ICON_FG  = { pdf:"#9B2C1F", zip:"#2E5A18", art:"#0E3760", img:"#8A5A12", other:"#5F6B7A" };
+
 function FolderIcon() {
   return (
-    <svg className="ex-icon" viewBox="0 0 24 24" aria-hidden="true">
-      <path fill="#E2B53A" d="M3.5 6.75A1.75 1.75 0 0 1 5.25 5h4.1c.3 0 .59.12.8.33l1.2 1.17h7.4A1.75 1.75 0 0 1 20.5 8.25v9A1.75 1.75 0 0 1 18.75 19h-13.5A1.75 1.75 0 0 1 3.5 17.25v-10.5Z" />
-      <path fill="#F6D36A" d="M3.5 9h17v8.25A1.75 1.75 0 0 1 18.75 19h-13.5A1.75 1.75 0 0 1 3.5 17.25V9Z" />
+    <svg width="20" height="20" viewBox="0 0 20 20" fill="none" style={{ flexShrink:0, display:"block" }} aria-hidden="true">
+      <rect x="1" y="6" width="18" height="12" rx="2" fill="#F6D36A"/>
+      <path d="M1 8.5A2 2 0 0 1 3 6.5h4.5l1.5 1.5H17A2 2 0 0 1 19 10v7a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8.5Z" fill="#E2B53A"/>
+      <path d="M1 10h18v7a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2v-7Z" fill="#F6D36A"/>
     </svg>
   );
 }
@@ -46,13 +50,13 @@ function FolderIcon() {
 function FileIcon({ name }) {
   const { label, tone } = fileKind(name);
   return (
-    <span className={`ex-file-icon ${tone}`} aria-hidden="true">
-      <svg viewBox="0 0 24 24">
-        <path d="M7 3.5h7.2L19 8.3V20a1.5 1.5 0 0 1-1.5 1.5h-10A1.5 1.5 0 0 1 6 20V5A1.5 1.5 0 0 1 7.5 3.5H7Z" />
-        <path d="M14.2 3.5V8.3H19" />
-      </svg>
-      <small>{label.slice(0, 3)}</small>
-    </span>
+    <span aria-hidden="true" style={{
+      display:"inline-flex", alignItems:"center", justifyContent:"center",
+      width:20, height:20, borderRadius:4, flexShrink:0,
+      background: ICON_BG[tone]||ICON_BG.other,
+      color: ICON_FG[tone]||ICON_FG.other,
+      fontSize:7, fontWeight:900, letterSpacing:".05em", lineHeight:1,
+    }}>{label.slice(0,4)}</span>
   );
 }
 
