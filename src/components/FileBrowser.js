@@ -237,8 +237,8 @@ export default function FileBrowser() {
                   <span className="ex-tree-label">{folder.label}</span>
                 </button>
               );
-            })
-            ))}
+            })}
+
           </aside>
 
           <div className="ex-table-wrap">
