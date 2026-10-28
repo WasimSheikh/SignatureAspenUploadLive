@@ -1,6 +1,6 @@
 import Brand from "@/components/Brand";
 
-const LIVE = "https://signaturefileupload-c3gna0hwffapbfc0.westus3-01.azurewebsites.net";
+const LIVE = "https://fileshare2.signatureaspen.com";
 
 const LINKS = [
   ["Upload Art", `${LIVE}/`],

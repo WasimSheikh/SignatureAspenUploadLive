@@ -28,7 +28,7 @@ jobs:
         run: npm run build
         env:
           NODE_ENV: production
-          APP_URL: https://signaturefileupload-c3gna0hwffapbfc0.westus3-01.azurewebsites.net
+          APP_URL: https://fileshare2.signatureaspen.com
           DATABASE_URL: postgresql://placeholder@localhost/placeholder
           AZURE_STORAGE_ACCOUNT_NAME: sigaspenfiles
           AZURE_STORAGE_CONTAINER: design-transfers
