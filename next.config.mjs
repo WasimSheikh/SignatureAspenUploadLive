@@ -13,10 +13,10 @@ const nextConfig = {
       { key: "Content-Security-Policy", value: [
         "default-src 'self'",
         `script-src 'self' 'unsafe-inline'${process.env.NODE_ENV !== "production" ? " 'unsafe-eval'" : ""}`,
-        "style-src 'self' 'unsafe-inline'",
+        "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
         "img-src 'self' data: https://signatureaspen.com",
         "connect-src 'self' https://*.blob.core.windows.net",
-        "font-src 'none'",
+        "font-src 'self' https://fonts.gstatic.com",
         "object-src 'none'",
         "base-uri 'self'",
         "form-action 'self'",
