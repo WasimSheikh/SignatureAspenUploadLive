@@ -41,8 +41,14 @@ jobs:
 
       - name: Bundle standalone for deployment
         run: |
-          cp -r .next/static .next/standalone/.next/static
-          cp -r public .next/standalone/public 2>/dev/null || true
+          # Copy contents (trailing /.) so dest dir nesting is correct
+          # whether or not .next/standalone/.next/static already exists
+          mkdir -p .next/standalone/.next/static
+          cp -r .next/static/. .next/standalone/.next/static/
+          mkdir -p .next/standalone/public
+          cp -r public/. .next/standalone/public/ 2>/dev/null || true
+          echo "CSS files in standalone:"
+          find .next/standalone/.next/static -name "*.css" | head -5
 
       - name: Azure login (OIDC)
         uses: azure/login@v2
