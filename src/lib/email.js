@@ -743,3 +743,23 @@ export async function sendDailySummary(database) {
   }
   return sent > 0 ? "sent" : "failed";
 }
+
+// ── Send share link email ─────────────────────────────────────────────────────
+
+export async function sendShareLink({ toEmail, senderName, senderEmail, transferUrl, message, company, title }) {
+  const subject = `Your files from Signature Aspen${company ? ` — ${company}` : ""}`;
+  const msgHtml = escapeHtml(message || "").replace(/\n/g, "<br>");
+
+  const body = `
+    ${msgHtml ? `<p style="font-size:15px;line-height:1.6;color:#1A1A1A;margin:0 0 22px 0;white-space:pre-wrap">${msgHtml}</p>` : ""}
+    ${btnNavy(transferUrl, "View and download files")}
+    <p style="font-size:13px;color:#5F6B7A;margin:14px 0 0">Questions? Reply to this email and ${escapeHtml(senderName || "your Aspen contact")} will get back to you.</p>`;
+
+  const footer = `${COMMON_FOOTER}
+    <p class="why">Sent to you by ${escapeHtml(senderName || "Signature Aspen")}.</p>`;
+
+  const html = emailWrap(body, footer);
+  const text = `${message || ""}\n\nView and download files: ${transferUrl}\n\nQuestions? Reply to this email.`;
+
+  await sendOne(toEmail, subject, html, text, senderEmail || undefined);
+}
