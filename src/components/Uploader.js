@@ -105,6 +105,7 @@ export default function Uploader({ employee = null, onComplete, showHero = true,
         prefill.contact = params.get("contact");
         if (params.get("contact") === "other") setOtherContact(true);
       }
+      if (params.get("contactEmail")) prefill.contactEmail = params.get("contactEmail");
       if (params.get("job")) prefill.jobNumber = params.get("job");
       if (params.get("company")) prefill.company = params.get("company");
       if (Object.keys(prefill).length) setUrlPrefill(prefill);
@@ -167,8 +168,8 @@ export default function Uploader({ employee = null, onComplete, showHero = true,
       const contact = proof
         ? { id: "customer", name: fields.name || "Customer", email: fields.customerEmail }
         : fields.contact === "other"
-          ? { ...contactBase, name: fields.otherContactName || "Other" }
-          : contactBase;
+          ? { ...contactBase, name: fields.otherContactName || "Other", email: urlPrefill.contactEmail || contactBase.email }
+          : { ...contactBase, email: urlPrefill.contactEmail || contactBase.email };
       const fingerprints = await Promise.all(files.map(fingerprint));
       let session = active.current;
       if (session && JSON.stringify(session.fingerprints) !== JSON.stringify(fingerprints)) {

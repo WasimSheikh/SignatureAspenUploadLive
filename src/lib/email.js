@@ -24,6 +24,7 @@ export function dashboardUploadsUrl(origin = config().appUrl) {
 export function uploadRequestUrl(contact, job, origin = config().appUrl) {
   const params = new URLSearchParams({
     contact: contact.id || "",
+    ...(contact.email ? { contactEmail: contact.email } : {}),
     job: job.number || "",
     title: job.title || "",
     company: job.company || "",
