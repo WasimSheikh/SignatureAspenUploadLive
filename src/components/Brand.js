@@ -7,9 +7,8 @@ export default function Brand() {
   return (
     <a href="/" className="brand" aria-label="Signature Aspen file delivery home">
       {!failed && <img
-        src="https://signatureaspen.com/wp-content/uploads/2023/09/logo2.png"
+        src="/logo.svg"
         alt="Signature Aspen"
-        referrerPolicy="no-referrer"
         onError={() => setFailed(true)}
         className="brand-logo"
       />}

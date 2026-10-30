@@ -90,7 +90,7 @@ function parseMessage(raw) {
 
 // ── Shared helpers ────────────────────────────────────────────────────────────
 
-const LOGO_URL = "https://signatureaspen.com/wp-content/uploads/2023/09/logo2.png";
+const LOGO_URL = `${config().appUrl}/logo.svg`;
 const FONT = "Arial,Helvetica,sans-serif";
 const NAVY = "#0E3760";
 const GREEN = "#77C045";
