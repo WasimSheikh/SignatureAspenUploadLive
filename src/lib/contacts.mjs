@@ -21,7 +21,7 @@ export const CONTACTS = [
 export const SALES_EMAIL = "sales@signatureaspen.com";
 
 export function resolveContactEmail(id) {
-  if (id === "other") return SALES_EMAIL;
+  if (!id || id === "sales" || id === "other") return SALES_EMAIL;
   const contact = CONTACTS.find((c) => c.id === id);
   if (!contact) fail(400, "Invalid contact.");
   return contact.email;

@@ -3,9 +3,28 @@ import { config } from "./config.js";
 import { endpoint, json, readJson, requireOrigin, requireUploadToken, requireLive, isUnlocked,
   requirePublic, publicMetadata } from "./http.js";
 import { randomId, hashToken, validateTransfer, makePasscodeHash, verifyPasscode,
-  signUnlock, fail } from "./security.mjs";
+  signUnlock, fail, HttpError } from "./security.mjs";
 import { resolveContactEmail } from "./contacts.mjs";
 import { checkRateLimit, clientIp } from "./rate-limit.mjs";
+
+async function verifyTurnstile(token, ip) {
+  const secret = process.env.TURNSTILE_SECRET_KEY;
+  if (!secret) return;
+  if (!token) fail(403, "Please complete the CAPTCHA and try again.");
+  try {
+    const res = await fetch("https://challenges.cloudflare.com/turnstile/v0/siteverify", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ secret, response: token, remoteip: ip }),
+      signal: AbortSignal.timeout(5000),
+    });
+    const { success } = await res.json();
+    if (!success) fail(403, "CAPTCHA verification failed. Please try again.");
+  } catch (err) {
+    if (err instanceof HttpError) throw err;
+    console.error("Turnstile verification error:", err?.message);
+  }
+}
 import { initiateFile, signPart, listParts, completeFile, removeFile, requireAzure, dateObjectKey } from "./storage.js";
 import { sendTransferEmails, publicUrl } from "./email.js";
 import { recordEmployeeUpload } from "./employees.js";
@@ -23,10 +42,13 @@ function uploadFile(file) {
 
 export const createTransfer = endpoint(async (request) => {
   requireOrigin(request);
-  if (!checkRateLimit(`transfer:${clientIp(request)}`, 10, 10 * 60 * 1000)) {
+  const ip = clientIp(request);
+  if (!checkRateLimit(`transfer:${ip}`, 10, 10 * 60 * 1000)) {
     fail(429, "Too many requests. Please try again later.");
   }
-  const input = validateTransfer(await readJson(request), config());
+  const body = await readJson(request);
+  await verifyTurnstile(body?.turnstileToken, ip);
+  const input = validateTransfer(body, config());
   if (input.purpose === "proof") {
     const employee = await readEmployeeSession(request);
     if (!employee) fail(401, "Employee sign-in is required to send a design proof.");
