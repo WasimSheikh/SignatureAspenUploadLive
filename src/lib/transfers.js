@@ -4,6 +4,8 @@ import { endpoint, json, readJson, requireOrigin, requireUploadToken, requireLiv
   requirePublic, publicMetadata } from "./http.js";
 import { randomId, hashToken, validateTransfer, makePasscodeHash, verifyPasscode,
   signUnlock, fail } from "./security.mjs";
+import { resolveContactEmail } from "./contacts.mjs";
+import { checkRateLimit, clientIp } from "./rate-limit.mjs";
 import { initiateFile, signPart, listParts, completeFile, removeFile, requireAzure, dateObjectKey } from "./storage.js";
 import { sendTransferEmails, publicUrl } from "./email.js";
 import { recordEmployeeUpload } from "./employees.js";
@@ -21,14 +23,17 @@ function uploadFile(file) {
 
 export const createTransfer = endpoint(async (request) => {
   requireOrigin(request);
+  if (!checkRateLimit(`transfer:${clientIp(request)}`, 10, 10 * 60 * 1000)) {
+    fail(429, "Too many requests. Please try again later.");
+  }
   const input = validateTransfer(await readJson(request), config());
   if (input.purpose === "proof") {
     const employee = await readEmployeeSession(request);
     if (!employee) fail(401, "Employee sign-in is required to send a design proof.");
     if (employee.email) input.senderEmail = employee.email;
-    if (!/(^|\n)Purpose: proof(\n|$)/i.test(input.message)) {
-      input.message = `Purpose: proof${input.message ? `\n${input.message}` : ""}`;
-    }
+  } else {
+    input.recipientEmails = [resolveContactEmail(input.contactId)];
+    input.message = input.message.replace(/(^|\n)Purpose:[^\n]*/gi, "").replace(/^\n+/, "").trim();
   }
   const id = randomId();
   const uploadToken = randomId();
@@ -38,10 +43,11 @@ export const createTransfer = endpoint(async (request) => {
     try {
       await client.query(`INSERT INTO transfers
         (id, upload_token_hash, sender_email, recipient_emails, company, title, message,
-         passcode_hash, retention_days, part_size, expires_at)
-        VALUES ($1,$2,$3,$4::jsonb,$5,$6,$7,$8,$9::integer,$10,now() + ($9::integer * interval '1 day'))`,
+         passcode_hash, retention_days, part_size, purpose, expires_at)
+        VALUES ($1,$2,$3,$4::jsonb,$5,$6,$7,$8,$9::integer,$10,$11,now() + ($9::integer * interval '1 day'))`,
       [id, hashToken(uploadToken), input.senderEmail, JSON.stringify(input.recipientEmails),
-        input.company, input.title, input.message, passcodeHash, input.retentionDays, input.partSize]);
+        input.company, input.title, input.message, passcodeHash, input.retentionDays, input.partSize,
+        input.purpose]);
       for (const [ordinal, file] of input.files.entries()) {
         const fileId = randomId();
         await client.query(`INSERT INTO transfer_files

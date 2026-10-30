@@ -41,6 +41,7 @@ CREATE TABLE IF NOT EXISTS transfer_files (
   UNIQUE (transfer_id, ordinal)
 );
 ALTER TABLE transfer_files ADD COLUMN IF NOT EXISTS azure_snapshot text;
+ALTER TABLE transfers ADD COLUMN IF NOT EXISTS purpose text NOT NULL DEFAULT 'upload' CHECK (purpose IN ('upload', 'proof'));
 CREATE TABLE IF NOT EXISTS transfer_access_events (
   id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
   transfer_id text NOT NULL REFERENCES transfers(id) ON DELETE CASCADE,
