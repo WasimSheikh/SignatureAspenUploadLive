@@ -38,6 +38,7 @@ jobs:
           ENTRA_ALLOWED_GROUP_IDS: ${{ secrets.ENTRA_ALLOWED_GROUP_IDS }}
           COOKIE_SECRET: ${{ secrets.COOKIE_SECRET }}
           CRON_SECRET: ${{ secrets.CRON_SECRET }}
+          NEXT_PUBLIC_TURNSTILE_SITE_KEY: ${{ secrets.TURNSTILE_SITE_KEY }}
 
       - name: Bundle standalone for deployment
         run: |

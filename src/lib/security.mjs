@@ -123,10 +123,10 @@ export function validateTransfer(input, limits = {}) {
     recipientEmails = [...new Set(input.recipientEmails.split(",").map(email))];
     if (!recipientEmails.length || recipientEmails.length > maxRecipients) fail(400, "Too many recipients.");
   } else {
-    if (typeof input.contactId !== "string" || !/^[a-z][a-z0-9]{0,49}$/.test(input.contactId)) {
+    if (typeof input.contactId !== "string" || (input.contactId !== "" && !/^[a-z][a-z0-9]{0,49}$/.test(input.contactId))) {
       fail(400, "Invalid contact.");
     }
-    contactId = input.contactId;
+    contactId = input.contactId || "sales";
     recipientEmails = [];
   }
   if (![7, 14, 30].includes(input.retentionDays)) fail(400, "Retention must be 7, 14, or 30 days.");

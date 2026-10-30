@@ -90,6 +90,16 @@ export default function Uploader({ employee = null, onComplete, showHero = true,
   const form = useRef(null);
   const active = useRef(null);
 
+  const turnstileSiteKey = process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY;
+  useEffect(() => {
+    if (!turnstileSiteKey) return;
+    const script = document.createElement("script");
+    script.src = "https://challenges.cloudflare.com/turnstile/v0/api.js";
+    script.async = true;
+    document.head.appendChild(script);
+    return () => script.remove();
+  }, [turnstileSiteKey]);
+
   useEffect(() => {
     try {
       const stored = JSON.parse(localStorage.getItem(storageKey));
@@ -187,7 +197,8 @@ export default function Uploader({ employee = null, onComplete, showHero = true,
           body: JSON.stringify({
             purpose: proof ? "proof" : "upload",
             senderEmail: proof ? (employee?.email || fields.senderEmail) : fields.senderEmail,
-            ...(proof ? { recipientEmails: fields.customerEmail } : { contactId: fields.contact }),
+            ...(proof ? { recipientEmails: fields.customerEmail } : { contactId: fields.contact || "sales" }),
+            turnstileToken: fields["cf-turnstile-response"] || undefined,
             company: fields.company,
             title: fields.jobNumber?.trim()
               || (proof ? `Design proof for ${fields.company || "customer"}` : `File upload from ${fields.company || "client"}`),
@@ -503,6 +514,10 @@ export default function Uploader({ employee = null, onComplete, showHero = true,
 
         {error && <p className="error" role="alert">{error}</p>}
         {notice && <p className="banner" role="status">{notice}</p>}
+
+        {!proof && turnstileSiteKey && (
+          <div className="cf-turnstile" data-sitekey={turnstileSiteKey} data-theme="light" />
+        )}
 
         <div className="qd-foot">
           <button type="submit" className="btn-primary" disabled={busy || !files.length || (proof && !employee?.email)}>
