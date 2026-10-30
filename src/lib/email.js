@@ -90,7 +90,7 @@ function parseMessage(raw) {
 
 // ── Shared helpers ────────────────────────────────────────────────────────────
 
-const LOGO_URL = `${config().appUrl}/logo.svg`;
+const logoUrl = () => `${config().appUrl}/logo.svg`;
 const FONT = "Arial,Helvetica,sans-serif";
 const NAVY = "#0E3760";
 const GREEN = "#77C045";
@@ -140,7 +140,7 @@ function emailWrap(body, footer) {
 <tr><td align="center" style="padding:24px 16px">
 <table width="600" cellpadding="0" cellspacing="0" border="0" role="presentation" style="max-width:600px;width:100%;background-color:#ffffff;border:1px solid ${LINE};border-radius:6px">
   <tr><td style="border-top:4px solid ${GREEN};padding:20px 32px 16px;border-bottom:1px solid ${LINE}">
-    <img src="${LOGO_URL}" alt="Signature Aspen" height="44" style="display:block;max-width:200px;height:44px;border:0" referrerpolicy="no-referrer">
+    <img src="${logoUrl()}" alt="Signature Aspen" height="44" style="display:block;max-width:200px;height:44px;border:0" referrerpolicy="no-referrer">
   </td></tr>
   <tr><td style="padding:28px 32px 26px;font-family:${FONT};font-size:15px;color:#1A1A1A;line-height:1.55">
     ${body}
