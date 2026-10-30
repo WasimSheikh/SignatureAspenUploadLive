@@ -113,12 +113,22 @@ export function validateTransfer(input, limits = {}) {
   const maxBytes = limits.maxBytes ?? 20 * 1024 ** 3;
   const maxFiles = limits.maxFiles ?? 100;
   const maxRecipients = limits.maxRecipients ?? 20;
+  const purpose = input.purpose === "proof" ? "proof" : "upload";
   const senderEmail = email(input.senderEmail);
-  if (typeof input.recipientEmails !== "string" || input.recipientEmails.length > maxRecipients * 256) {
-    fail(400, "Provide comma-separated recipient email addresses.");
+  let recipientEmails, contactId;
+  if (purpose === "proof") {
+    if (typeof input.recipientEmails !== "string" || input.recipientEmails.length > maxRecipients * 256) {
+      fail(400, "Provide comma-separated recipient email addresses.");
+    }
+    recipientEmails = [...new Set(input.recipientEmails.split(",").map(email))];
+    if (!recipientEmails.length || recipientEmails.length > maxRecipients) fail(400, "Too many recipients.");
+  } else {
+    if (typeof input.contactId !== "string" || !/^[a-z][a-z0-9]{0,49}$/.test(input.contactId)) {
+      fail(400, "Invalid contact.");
+    }
+    contactId = input.contactId;
+    recipientEmails = [];
   }
-  const recipientEmails = [...new Set(input.recipientEmails.split(",").map(email))];
-  if (!recipientEmails.length || recipientEmails.length > maxRecipients) fail(400, "Too many recipients.");
   if (![7, 14, 30].includes(input.retentionDays)) fail(400, "Retention must be 7, 14, or 30 days.");
   const title = text(input.title, "title", 200);
   const company = text(input.company, "company", 200);
@@ -150,8 +160,7 @@ export function validateTransfer(input, limits = {}) {
     if (type && !/^[\w.+-]+\/[\w.+-]+$/.test(type)) fail(400, "Invalid file type.");
     return { name: name.normalize("NFC"), size: file.size, type: type || "application/octet-stream" };
   });
-  const purpose = input.purpose === "proof" ? "proof" : "upload";
-  return { senderEmail, recipientEmails, title, company, message, retentionDays: input.retentionDays,
+  return { senderEmail, recipientEmails, contactId, title, company, message, retentionDays: input.retentionDays,
     passcode, files, purpose, partSize: partSizeFor(Math.max(...files.map((file) => file.size))) };
 }
 

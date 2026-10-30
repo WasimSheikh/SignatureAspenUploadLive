@@ -27,6 +27,7 @@ const CONTACTS_FOR_REQUEST = [
   { id: "kdasilva", name: "Kris Da Silva",  role: "Account Manager", email: "kdasilva@signatureaspen.com" },
   { id: "ihoover", name: "Ida Hoover", role: "Account Manager", email: "ihoover@signatureaspen.com" },
   { id: "marmstrong", name: "Michelle Armstrong", role: "Account Manager", email: "marmstrong@signatureaspen.com" },
+  { id: "sflores",   name: "Sandy Flores",      role: "Account Manager", email: "sflores@signatureaspen.com" },
 ];
 
 function formatWhen(value) {

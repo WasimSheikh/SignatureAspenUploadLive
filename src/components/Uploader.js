@@ -24,6 +24,7 @@ const CONTACTS = [
   { id: "bhaak",     name: "Beverly Haak",      role: "Account Manager", email: "bhaak@signatureaspen.com" },
   { id: "dcotlow",   name: "David Cotlow",      role: "Account Manager", email: "dcotlow@signatureaspen.com" },
   { id: "storres",   name: "Sandra Torres",     role: "Account Manager", email: "storres@signatureaspen.com" },
+  { id: "sflores",   name: "Sandy Flores",      role: "Account Manager", email: "sflores@signatureaspen.com" },
   { id: "other",     name: "Other",            label: "Other — I'll type their name below", role: "", email: "sales@signatureaspen.com" },
 ];
 const SALES_CONTACT = { id: "sales", name: "Signature Aspen", email: "sales@signatureaspen.com" };
@@ -104,7 +105,6 @@ export default function Uploader({ employee = null, onComplete, showHero = true,
         prefill.contact = params.get("contact");
         if (params.get("contact") === "other") setOtherContact(true);
       }
-      if (params.get("contactEmail")) prefill.contactEmail = params.get("contactEmail");
       if (params.get("job")) prefill.jobNumber = params.get("job");
       if (params.get("company")) prefill.company = params.get("company");
       if (Object.keys(prefill).length) setUrlPrefill(prefill);
@@ -167,8 +167,8 @@ export default function Uploader({ employee = null, onComplete, showHero = true,
       const contact = proof
         ? { id: "customer", name: fields.name || "Customer", email: fields.customerEmail }
         : fields.contact === "other"
-          ? { ...contactBase, name: fields.otherContactName || "Other", email: urlPrefill.contactEmail || contactBase.email }
-          : { ...contactBase, email: urlPrefill.contactEmail || contactBase.email };
+          ? { ...contactBase, name: fields.otherContactName || "Other" }
+          : { ...contactBase };
       const fingerprints = await Promise.all(files.map(fingerprint));
       let session = active.current;
       if (session && JSON.stringify(session.fingerprints) !== JSON.stringify(fingerprints)) {
@@ -187,7 +187,7 @@ export default function Uploader({ employee = null, onComplete, showHero = true,
           body: JSON.stringify({
             purpose: proof ? "proof" : "upload",
             senderEmail: proof ? (employee?.email || fields.senderEmail) : fields.senderEmail,
-            recipientEmails: proof ? fields.customerEmail : contact.email,
+            ...(proof ? { recipientEmails: fields.customerEmail } : { contactId: fields.contact }),
             company: fields.company,
             title: fields.jobNumber?.trim()
               || (proof ? `Design proof for ${fields.company || "customer"}` : `File upload from ${fields.company || "client"}`),

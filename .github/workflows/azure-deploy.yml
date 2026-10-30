@@ -30,12 +30,12 @@ jobs:
           NODE_ENV: production
           APP_URL: https://fileshare2.signatureaspen.com
           DATABASE_URL: postgresql://placeholder@localhost/placeholder
-          AZURE_STORAGE_ACCOUNT_NAME: sigaspenfiles
-          AZURE_STORAGE_CONTAINER: design-transfers
-          GRAPH_SENDER_EMAIL: noreply@aspenimg.com
-          ENTRA_TENANT_ID: e64b8cad-d81e-461f-9e6f-2539d215e7ba
-          ENTRA_CLIENT_ID: e912adb2-b374-406f-9b35-d705f7518363
-          ENTRA_ALLOWED_GROUP_IDS: 9dfeb2e9-e804-4a2f-81e7-f865bdc74bb1
+          AZURE_STORAGE_ACCOUNT_NAME: ${{ secrets.AZURE_STORAGE_ACCOUNT_NAME }}
+          AZURE_STORAGE_CONTAINER: ${{ secrets.AZURE_STORAGE_CONTAINER }}
+          GRAPH_SENDER_EMAIL: ${{ secrets.GRAPH_SENDER_EMAIL }}
+          ENTRA_TENANT_ID: ${{ secrets.ENTRA_TENANT_ID }}
+          ENTRA_CLIENT_ID: ${{ secrets.ENTRA_CLIENT_ID }}
+          ENTRA_ALLOWED_GROUP_IDS: ${{ secrets.ENTRA_ALLOWED_GROUP_IDS }}
           COOKIE_SECRET: ${{ secrets.COOKIE_SECRET }}
           CRON_SECRET: ${{ secrets.CRON_SECRET }}
 
