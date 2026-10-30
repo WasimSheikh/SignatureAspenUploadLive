@@ -24,6 +24,7 @@ const CONTACTS = [
   { id: "bhaak",     name: "Beverly Haak",      role: "Account Manager", email: "bhaak@signatureaspen.com" },
   { id: "dcotlow",   name: "David Cotlow",      role: "Account Manager", email: "dcotlow@signatureaspen.com" },
   { id: "storres",   name: "Sandra Torres",     role: "Account Manager", email: "storres@signatureaspen.com" },
+  { id: "sflores",   name: "Sandy Flores",      role: "Account Manager", email: "sflores@signatureaspen.com" },
   { id: "other",     name: "Other",            label: "Other — I'll type their name below", role: "", email: "sales@signatureaspen.com" },
 ];
 const SALES_CONTACT = { id: "sales", name: "Signature Aspen", email: "sales@signatureaspen.com" };

@@ -15,6 +15,7 @@ export const CONTACTS = [
   { id: "bhaak",      email: "bhaak@signatureaspen.com" },
   { id: "dcotlow",    email: "dcotlow@signatureaspen.com" },
   { id: "storres",    email: "storres@signatureaspen.com" },
+  { id: "sflores",    email: "sflores@signatureaspen.com" },
 ];
 
 export const SALES_EMAIL = "sales@signatureaspen.com";
